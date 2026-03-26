@@ -1,0 +1,156 @@
+[
+  {
+    "name": "flow::router_personalize_then_manage_notes",
+    "steps": [
+      "route_personalize_name",
+      "route_personalize_vault",
+      "route_manage_notes_add"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Mogę dodać, edytować, odczytać i listować notatki, wyszukiwać informacje semantycznie albo pomóc w podejmowaniu decyzji. Co chcesz zrobić?"
+      },
+      {
+        "role": "user",
+        "content": "Mam na imię Mateusz.",
+        "source_scenario_name": "route_personalize_name"
+      },
+      {
+        "role": "assistant",
+        "content": "personalize",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "user",
+        "content": "Mój vault w Obsidianie nazywa się SecondBrain.",
+        "source_scenario_name": "route_personalize_vault"
+      },
+      {
+        "role": "assistant",
+        "content": "personalize",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "user",
+        "content": "Dodaj notatkę o nazwie Zakupy z treścią Mleko i chleb.",
+        "source_scenario_name": "route_manage_notes_add"
+      },
+      {
+        "role": "assistant",
+        "content": "manage_notes",
+        "kind": "model_tool_call"
+      }
+    ]
+  },
+  {
+    "name": "flow::router_discovery_then_manage_notes",
+    "steps": [
+      "route_discovery_search",
+      "route_manage_notes_read",
+      "route_manage_notes_list"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Mogę dodać, edytować, odczytać i listować notatki, wyszukiwać informacje semantycznie albo pomóc w podejmowaniu decyzji. Co chcesz zrobić?"
+      },
+      {
+        "role": "user",
+        "content": "Znajdź w moich notatkach informacje o RAG i embeddings.",
+        "source_scenario_name": "route_discovery_search"
+      },
+      {
+        "role": "assistant",
+        "content": "discovery_notes",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "user",
+        "content": "Odczytaj notatkę Projekt Atlas.",
+        "source_scenario_name": "route_manage_notes_read"
+      },
+      {
+        "role": "assistant",
+        "content": "manage_notes",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "user",
+        "content": "Pokaż wszystkie notatki.",
+        "source_scenario_name": "route_manage_notes_list"
+      },
+      {
+        "role": "assistant",
+        "content": "manage_notes",
+        "kind": "model_tool_call"
+      }
+    ]
+  },
+  {
+    "name": "flow::router_sage_decision",
+    "steps": [
+      "route_sage_decision"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Mogę dodać, edytować, odczytać i listować notatki, wyszukiwać informacje semantycznie albo pomóc w podejmowaniu decyzji. Co chcesz zrobić?"
+      },
+      {
+        "role": "user",
+        "content": "Pomóż mi zdecydować, czy zatrudnić freelancera, czy budować zespół wewnętrzny.",
+        "source_scenario_name": "route_sage_decision"
+      },
+      {
+        "role": "assistant",
+        "content": "sage",
+        "kind": "model_tool_call"
+      }
+    ]
+  },
+  {
+    "name": "flow::router_sage_decision_variants",
+    "steps": [
+      "route_sage_house_purchase",
+      "route_sage_house_vs_flat",
+      "route_sage_compare_options"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Mogę dodać, edytować, odczytać i listować notatki, wyszukiwać informacje semantycznie albo pomóc w podejmowaniu decyzji. Co chcesz zrobić?"
+      },
+      {
+        "role": "user",
+        "content": "Chcialbym zakupic dom i potrzebuje pomocy",
+        "source_scenario_name": "route_sage_house_purchase"
+      },
+      {
+        "role": "assistant",
+        "content": "sage",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "user",
+        "content": "Nie wiem czy kupić dom czy mieszkanie, pomóż podjąć decyzję.",
+        "source_scenario_name": "route_sage_house_vs_flat"
+      },
+      {
+        "role": "assistant",
+        "content": "sage",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "user",
+        "content": "Porównaj opcje leasingu i zakupu auta.",
+        "source_scenario_name": "route_sage_compare_options"
+      },
+      {
+        "role": "assistant",
+        "content": "sage",
+        "kind": "model_tool_call"
+      }
+    ]
+  }
+]

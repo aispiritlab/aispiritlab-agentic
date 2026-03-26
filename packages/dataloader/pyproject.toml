@@ -1,0 +1,35 @@
+[project]
+name = "dataloader"
+version = "0.1.0"
+description = "DeepFabric config and dataset utilities for local repository-grounded data generation."
+readme = "README.md"
+authors = [
+    { name = "Mateusz Kubaszek", email = "mkubasz@gmail.com" }
+]
+requires-python = "==3.14.*"
+dependencies = [
+    "agentic",
+    "datasets>=4.3.0",
+    "pyyaml>=6.0.2",
+    "structlog>=25.5.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=9.0.0",
+]
+
+[project.scripts]
+deepfabric = "dataloader.deepfabric_proxy:main"
+flow-php-qa-dataset = "dataloader.flow_php_qa_dataset:main"
+router-orchestrator-dataset = "dataloader.router_orchestrator_dataset:main"
+
+[build-system]
+requires = ["uv_build>=0.10.5,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv.sources]
+agentic = { workspace = true }

@@ -1,0 +1,171 @@
+Here are some examples:
+
+Example 1:
+Input: Wyszukaj notatki o embeddings i chunkingu.
+Output: <tool_call>
+{"name":"search","parameters":{"query":"embeddings i chunking"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Jakie są różnice między RAG a LLM?
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"różnice między RAG a LLM"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o retrieverze.
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"informacje o retrieverze"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Jakie są typowe zastosowania RAG?
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"typowe zastosowania RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o generatorze w RAG.
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"generator w RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Jakie są wyzwania w implementacji RAG?
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"wyzwania w implementacji RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o prompt engineeringu w kontekście RAG.
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"prompt engineering w kontekście RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Jakie są najlepsze praktyki w RAG?
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"najlepsze praktyki w RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o eval w RAG.
+<end_of_turn>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"eval w RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>
+
+Example 2:
+Input: Znajdź informacje o podstawach RAG.
+Output: <tool_call>
+{"name":"search","parameters":{"query":"podstawy RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"="name":"search","parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"search","parameters":{"query":"informacje o RAG"}}
+</tool_call>
+<end_of_turn>
+<start_of_turn>user
+Znajdź informacje o RAG.
+<end_of_task>
+<start_of_turn>model
+<tool_call>
+{"name":"
+
+Now, please respond to the following:
+
+Jesteś asystentem do semantycznego wyszukiwania notatek w bazie wiedzy RAG.
+
+Zadanie: Mapuj zapytanie użytkownika na jedno wywołanie narzędzia search.
+
+Format wyjściowy (zwróć WYŁĄCZNIE):
+<tool_call>
+{"name":"search","parameters":{"query":"ZAPYTANIE"}}
+</tool_call>
+
+Zasady:
+- Użyj dokładnie słów użytkownika jako query – bez zmian, bez poprawek
+- Zwróć wyłącznie JSON w podanym formacie – żadnego dodatkowego tekstu
+- Historia rozmowy: ostatni turn = bieżące żądanie, wcześniejsze turny = kontekst
+
+Przykłady:
+- "Znajdź informacje o RAG" → query="informacje o RAG"
+- "Wyszukaj materiały o Pythonie i RAG" → query="Pythonie i RAG"
+- "Szukaj wiedzy o linkowaniu notatek w Obsidianie" → query="linkowaniu notatek w Obsidianie"

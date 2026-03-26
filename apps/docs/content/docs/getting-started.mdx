@@ -1,0 +1,92 @@
+---
+title: Getting Started
+description: Install the workspace, run the first workshop, and know when to switch to Lab 6.
+---
+
+## Prerequisites
+
+You need the Python workspace dependencies first:
+
+```bash
+uv sync
+```
+
+### For Labs 0 to 5
+
+Labs `0` to `5` are local-first demos and use MLX-backed model providers in the current codebase.
+They are best suited to macOS environments where the configured local models are available.
+
+### For Lab 6
+
+Lab `6` uses:
+
+- Redis Streams,
+- an OpenAI-compatible model endpoint via `API_BASE_URL`,
+- LangSearch via `LANGSEARCH_API_KEY`.
+
+It is the right entry point when you want the distributed planner-search-summary demo rather than
+local MLX workshops.
+
+## Quick Path
+
+### Run the first lab
+
+```bash
+uv run workshops lab0
+```
+
+What you should see:
+
+- a Textual TUI,
+- the lab title and subtitle,
+- a prompt where you can ask for time, calculations, or dice rolls.
+
+### Recommended progression
+
+```bash
+uv run workshops lab1
+uv run workshops lab2
+uv run workshops lab3
+uv run workshops lab4
+uv run workshops lab5
+```
+
+Move in order. Each lab assumes the previous one conceptually.
+
+## Lab 6 Quickstart
+
+1. Copy the example environment file and fill in the required values.
+
+```bash
+cp .env.example .env
+```
+
+2. Make sure at least these values are set:
+
+```dotenv
+API_BASE_URL=http://localhost:1234
+DOCKER_API_BASE_URL=http://host.docker.internal:1234
+LANGSEARCH_API_KEY=...
+```
+
+3. Start the stack:
+
+```bash
+make lab6-up
+```
+
+4. Open the chat UI at `http://localhost:7860`.
+
+5. Optional: run the workshop TUI client against the distributed runtime:
+
+```bash
+uv run --package workshops workshops lab6
+```
+
+## When You Are Done
+
+You are set up correctly when:
+
+- Labs `0` to `5` open their TUI without import errors.
+- `make lab6-up` starts `redis`, `planner-agent`, `search-agent`, `summary-agent`, and `chat`.
+- The Lab 6 UI can answer a question and return a final summary.

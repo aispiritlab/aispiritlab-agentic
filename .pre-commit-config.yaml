@@ -1,0 +1,38 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.5
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty check
+        entry: ty check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: trufflehog
+        name: trufflehog
+        description: Detect secrets in your data
+        entry: trufflehog git file://. --since-commit HEAD --results=verified,unknown --fail
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  - repo: https://github.com/google/osv-scanner/
+    rev: v2.3.5
+    hooks:
+      - id: osv-scanner
+        args:
+          - scan
+          - source
+          - --format=vertical
+          - --verbosity=error
+          - --recursive
+          - .
+        pass_filenames: false
+        always_run: true

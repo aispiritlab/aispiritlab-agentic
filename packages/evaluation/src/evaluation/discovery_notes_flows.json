@@ -1,0 +1,104 @@
+[
+  {
+    "name": "flow::discovery_rag_embeddings_obsidian",
+    "steps": [
+      "search_rag_foundations",
+      "search_embeddings",
+      "search_obsidian_linking"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Pomogę Ci znaleźć notatki semantycznie. Jakie hasło mam wyszukać?"
+      },
+      {
+        "role": "user",
+        "content": "Znajdź informacje o podstawach RAG.",
+        "source_scenario_name": "search_rag_foundations"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"search\",\"parameters\":{\"query\":\"podstawach RAG\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Wyniki dla zapytania: podstawach RAG",
+        "kind": "tool_result"
+      },
+      {
+        "role": "user",
+        "content": "Wyszukaj notatki o embeddings i chunkingu.",
+        "source_scenario_name": "search_embeddings"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"search\",\"parameters\":{\"query\":\"embeddings i chunkingu\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Wyniki dla zapytania: embeddings i chunkingu",
+        "kind": "tool_result"
+      },
+      {
+        "role": "user",
+        "content": "Szukaj wiedzy o linkowaniu notatek w Obsidianie.",
+        "source_scenario_name": "search_obsidian_linking"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"search\",\"parameters\":{\"query\":\"linkowaniu notatek w Obsidianie\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Wyniki dla zapytania: linkowaniu notatek w Obsidianie",
+        "kind": "tool_result"
+      }
+    ]
+  },
+  {
+    "name": "flow::discovery_agentic_then_python_rag",
+    "steps": [
+      "search_agentic_tools",
+      "search_python_rag"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Pomogę Ci znaleźć notatki semantycznie. Jakie hasło mam wyszukać?"
+      },
+      {
+        "role": "user",
+        "content": "Znajdz notatki o narzedziach agentowych.",
+        "source_scenario_name": "search_agentic_tools"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"search\",\"parameters\":{\"query\":\"narzedziach agentowych\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Wyniki dla zapytania: narzedziach agentowych",
+        "kind": "tool_result"
+      },
+      {
+        "role": "user",
+        "content": "Wyszukaj materiały o Pythonie i RAG.",
+        "source_scenario_name": "search_python_rag"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"search\",\"parameters\":{\"query\":\"Pythonie i RAG\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Wyniki dla zapytania: Pythonie i RAG",
+        "kind": "tool_result"
+      }
+    ]
+  }
+]

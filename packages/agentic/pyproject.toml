@@ -1,0 +1,30 @@
+[project]
+name = "agentic"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Mateusz Kubaszek", email = "mkubasz@gmail.com" }
+]
+requires-python = "==3.14.*"
+dependencies = [
+    "httpx>=0.28.0",
+    "huggingface-hub>=1.7.2",
+    "mflux>=0.17.0; sys_platform == 'darwin'",
+    "mlx>=0.31.1; sys_platform == 'darwin'",
+    "numpy>=2.4.3",
+    "regex>=2026.2.28",
+    "structlog>=25.5.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=9.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.5,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

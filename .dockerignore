@@ -1,0 +1,14 @@
+.git
+.venv
+.uv-cache
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.idea
+.gradio
+data
+notebooks
+__pycache__
+*.pyc
+.claude/
+.dvc/

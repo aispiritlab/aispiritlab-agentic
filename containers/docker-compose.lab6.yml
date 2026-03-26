@@ -1,0 +1,98 @@
+services:
+  redis:
+    image: redis:8.6-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  planner-agent:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["python", "-m", "workshops.lab6.service_main"]
+    env_file:
+      - ../.env
+    environment:
+      AGENT_SERVICE_NAME: planner
+      AGENTIC_TRANSPORT: redis_streams
+      REDIS_URL: redis://redis:6379/0
+      API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  search-agent:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["python", "-m", "workshops.lab6.service_main"]
+    env_file:
+      - ../.env
+    environment:
+      AGENT_SERVICE_NAME: search
+      AGENTIC_TRANSPORT: redis_streams
+      REDIS_URL: redis://redis:6379/0
+      API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  summary-agent:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["python", "-m", "workshops.lab6.service_main"]
+    env_file:
+      - ../.env
+    environment:
+      AGENT_SERVICE_NAME: summary
+      AGENTIC_TRANSPORT: redis_streams
+      REDIS_URL: redis://redis:6379/0
+      API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  chat:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["chat"]
+    env_file:
+      - ../.env
+    environment:
+      AGENTIC_TRANSPORT: redis_streams
+      REDIS_URL: redis://redis:6379/0
+      CHAT_ENTRY_AGENT: planner
+      DISTRIBUTED_CHAT_SOURCE: chat
+      CHAT_SERVER_NAME: 0.0.0.0
+      CHAT_SERVER_PORT: 7860
+      API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
+    ports:
+      - "7860:7860"
+    depends_on:
+      redis:
+        condition: service_healthy
+      planner-agent:
+        condition: service_started
+      search-agent:
+        condition: service_started
+      summary-agent:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

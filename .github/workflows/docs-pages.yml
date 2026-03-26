@@ -1,0 +1,71 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/docs-pages.yml"
+      - "apps/docs/**"
+      - "containers/docker-compose.lab6.yml"
+      - "packages/agentic_runtime/src/agentic_runtime/settings.py"
+      - "packages/core/src/core/settings.py"
+      - "packages/workshops/**"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+
+      - name: Install docs dependencies
+        working-directory: apps/docs
+        run: npm ci
+
+      - name: Build docs
+        working-directory: apps/docs
+        env:
+          DOCS_SITE_URL: ${{ format('https://{0}.github.io/{1}', github.repository_owner, github.event.repository.name) }}
+        run: npm run build
+
+      - name: Disable Jekyll
+        working-directory: apps/docs
+        run: touch out/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/docs/out
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

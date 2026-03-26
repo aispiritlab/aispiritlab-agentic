@@ -1,0 +1,120 @@
+[
+  {
+    "name": "flow::organizer_classify_all_para_buckets",
+    "steps": [
+      "classify_project_note",
+      "classify_area_note",
+      "classify_resource_note",
+      "classify_archive_note"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Sklasyfikuję notatkę metodą PARA i dodam odpowiedni tag."
+      },
+      {
+        "role": "user",
+        "content": "Nazwa notatki: Projekt Atlas\nTreść notatki:\nPlan sprintu, milestone i lista zadań do wdrożenia MVP w tym miesiącu.\n",
+        "source_scenario_name": "classify_project_note"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"tag_note\",\"parameters\":{\"note_name\":\"Projekt Atlas\",\"tag\":\"para/project\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Notatka Projekt Atlas otagowana jako para/project.",
+        "kind": "tool_result"
+      },
+      {
+        "role": "user",
+        "content": "Nazwa notatki: Zdrowie i nawyki\nTreść notatki:\nCotygodniowy plan treningowy i rutyna monitorowania zdrowia.\n",
+        "source_scenario_name": "classify_area_note"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"tag_note\",\"parameters\":{\"note_name\":\"Zdrowie i nawyki\",\"tag\":\"para/area\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Notatka Zdrowie i nawyki otagowana jako para/area.",
+        "kind": "tool_result"
+      },
+      {
+        "role": "user",
+        "content": "Nazwa notatki: Notatki o RAG\nTreść notatki:\nZbiór linków, definicji i porównań strategii retrieval oraz chunkingu.\n",
+        "source_scenario_name": "classify_resource_note"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"tag_note\",\"parameters\":{\"note_name\":\"Notatki o RAG\",\"tag\":\"para/resource\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Notatka Notatki o RAG otagowana jako para/resource.",
+        "kind": "tool_result"
+      },
+      {
+        "role": "user",
+        "content": "Nazwa notatki: Projekt CRM 2023\nTreść notatki:\nProjekt zamknięty. Podsumowanie lessons learned i decyzja o archiwizacji.\n",
+        "source_scenario_name": "classify_archive_note"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"tag_note\",\"parameters\":{\"note_name\":\"Projekt CRM 2023\",\"tag\":\"para/archive\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Notatka Projekt CRM 2023 otagowana jako para/archive.",
+        "kind": "tool_result"
+      }
+    ]
+  },
+  {
+    "name": "flow::organizer_fallback_then_project",
+    "steps": [
+      "classify_ambiguous_note",
+      "classify_project_note"
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Cześć! Sklasyfikuję notatkę metodą PARA i dodam odpowiedni tag."
+      },
+      {
+        "role": "user",
+        "content": "Nazwa notatki: Pomysły na automatyzacje\nTreść notatki:\nLuźne inspiracje i checklisty do wykorzystania w przyszłości.\n",
+        "source_scenario_name": "classify_ambiguous_note"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"tag_note\",\"parameters\":{\"note_name\":\"Pomysły na automatyzacje\",\"tag\":\"para/resource\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Notatka Pomysły na automatyzacje otagowana jako para/resource.",
+        "kind": "tool_result"
+      },
+      {
+        "role": "user",
+        "content": "Nazwa notatki: Projekt Atlas\nTreść notatki:\nPlan sprintu, milestone i lista zadań do wdrożenia MVP w tym miesiącu.\n",
+        "source_scenario_name": "classify_project_note"
+      },
+      {
+        "role": "assistant",
+        "content": "<tool_call>\n{\"name\":\"tag_note\",\"parameters\":{\"note_name\":\"Projekt Atlas\",\"tag\":\"para/project\"}}\n</tool_call>",
+        "kind": "model_tool_call"
+      },
+      {
+        "role": "assistant",
+        "content": "Notatka Projekt Atlas otagowana jako para/project.",
+        "kind": "tool_result"
+      }
+    ]
+  }
+]

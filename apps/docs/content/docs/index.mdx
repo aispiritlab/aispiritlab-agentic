@@ -1,0 +1,65 @@
+---
+title: AI Spirit Workshops
+description: A short guide to what the workshop tool solves, how it works, and how to use it.
+---
+
+## Problem
+
+The project teaches agent-system design by letting you run the same ideas as concrete labs.
+
+Instead of starting from a large runtime and guessing how the pieces fit together, you move
+from:
+
+- a single agent with tools,
+- to event-driven workflows,
+- to planner delegation,
+- to a local runtime,
+- to multimodal flow,
+- to a distributed Redis Streams pipeline.
+
+That makes the tool useful when you want to learn or demo how agent systems evolve from a
+small loop into a coordinated runtime.
+
+## Roughly How It Works
+
+Each workshop adds one capability and keeps the previous concepts visible:
+
+- **Lab 0** introduces tool calling.
+- **Lab 1** adds events between two agents.
+- **Lab 2** adds planning and explicit delegation.
+- **Lab 3** removes manual orchestration loops and uses event dispatch.
+- **Lab 4** adds a runtime, message bus, and lifecycle events.
+- **Lab 5** adds image input and a multimodal step.
+- **Lab 6** splits the system into separate Redis-backed services: planner, search, and summary.
+
+## How To Use It
+
+The shortest path is:
+
+```bash
+uv sync
+uv run workshops lab0
+```
+
+Then move through the labs in order. When you want the full distributed demo:
+
+```bash
+cp .env.example .env
+make lab6-up
+```
+
+Use [Getting Started](/docs/getting-started) for the quick path, [How It Works](/docs/how-it-works)
+for the architecture progression, and [Configuration](/docs/reference/configuration) for the full
+runtime/workshop config surface.
+
+## What Is In Scope
+
+These docs are intentionally short and operational:
+
+- what each lab is for,
+- how the flow is wired,
+- which command to run,
+- what success looks like,
+- which environment variables matter.
+
+They are not a full package-by-package API manual.

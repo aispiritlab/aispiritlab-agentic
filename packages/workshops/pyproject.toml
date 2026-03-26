@@ -1,0 +1,22 @@
+[project]
+name = "workshops"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Mateusz Kubaszek", email = "mkubasz@gmail.com" }
+]
+requires-python = "==3.14.*"
+dependencies = [
+    "agentic",
+    "agentic-runtime",
+    "rich>=14.0.0",
+    "textual>=3.0.0",
+]
+
+[project.scripts]
+workshops = "workshops:main"
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"

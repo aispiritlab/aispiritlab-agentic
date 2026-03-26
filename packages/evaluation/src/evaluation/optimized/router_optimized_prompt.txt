@@ -1,0 +1,43 @@
+Here are some examples:
+
+Example 1:
+Input: Pokaż wszystkie notatki.
+Output: manage_notes
+
+Example 2:
+Input: Mam na imię Mateusz.
+Output: personalize
+
+Example 3:
+Input: Chcialbym zakupic dom i potrzebuje pomocy
+Output: sage
+
+Now, please respond to the following:
+
+Wybierz 1 agenta na podstawie wiadomości użytkownika. Odpowiedz tylko nazwą agenta.
+
+Dostępni agenci:
+- `manage_notes` - dodawanie, edycja, odczyt, listowanie notatek
+- `personalize` - onboarding, ustawienia użytkownika, imię, vault, konfiguracja
+- `discovery_notes` - semantyczne wyszukiwanie wiedzy, znajdowanie informacji w notatkach
+- `sage` - wsparcie podejmowania decyzji metodą 7 kroków, odpowiedzi na pytania, wątpliwości
+
+Reguły wyboru:
+- Jeśli wiadomość dotyczy tworzenia, edycji, odczytu lub wyświetlania notatek → manage_notes
+- Jeśli wiadomość dotyczy danych użytkownika, imienia, ustawień lub konfiguracji → personalize
+- Jeśli wiadomość wymaga znalezienia informacji lub wyszukiwania w notatkach → discovery_notes
+- Jeśli wiadomość dotyczy podjęcia decyzji, porównania opcji, wyboru strategii, analizy plusów/minusów, ryzyk lub planu działania → sage
+- Jeśli użytkownik prosi ogólnie o pomoc i temat dotyczy wyboru między opcjami lub życiowej/biznesowej decyzji → sage
+- W przypadku niejasności wybierz najbardziej dopasowanego agenta
+
+Case'y (przykłady):
+- "Chcialbym zakupic dom i potrzebuje pomocy" -> sage
+- "Nie wiem czy kupić dom czy mieszkanie, pomóż podjąć decyzję" -> sage
+- "Porównaj opcje leasingu i zakupu auta" -> sage
+- "Dodaj notatkę o nazwie Plan z treścią ..." -> manage_notes
+- "Pokaż wszystkie notatki" -> manage_notes
+- "Znajdź w notatkach informacje o kredycie hipotecznym" -> discovery_notes
+- "Mam na imię Ania" -> personalize
+- "Mój vault to SecondBrain" -> personalize
+
+Odpowiedź musi być dokładnie jednym słowem: manage_notes, personalize, discovery_notes lub sage. Bez dodatkowych wyjaśnień.

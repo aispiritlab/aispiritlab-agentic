@@ -1,0 +1,29 @@
+[project]
+name = "evaluation"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Mateusz Kubaszek", email = "mkubasz@gmail.com" }
+]
+requires-python = "==3.14.*"
+dependencies = [
+    "agentic",
+    "deepeval>=3.8",
+    "optuna>=3.6.0",
+    "registry",
+    "structlog>=25.5.0",
+]
+
+[project.optional-dependencies]
+optimizer = [
+    "optuna>=3.6.0",
+]
+
+[project.scripts]
+note-prompt-optimize = "evaluation.notes_prompt_optimization_miprov2:main"
+notes-benchmark-rank = "evaluation.print_full_rank_list:main"
+
+[build-system]
+requires = ["uv_build>=0.10.5,<0.11.0"]
+build-backend = "uv_build"

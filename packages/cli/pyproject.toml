@@ -1,0 +1,24 @@
+[project]
+name = "cli"
+version = "0.1.0"
+description = "Command-line interface for AI Spirit Agent"
+readme = "README.md"
+authors = [
+    { name = "Mateusz Kubaszek", email = "mkubasz@gmail.com" }
+]
+requires-python = "==3.14.*"
+dependencies = [
+    "personal-assistant",
+    "agentic",
+    "click>=8.3",
+    "evaluation",
+    "rich>=14.0.0",
+    "textual>=3.0.0",
+]
+
+[project.scripts]
+ai-spirit-cli = "cli:main"
+
+[build-system]
+requires = ["uv_build>=0.10.5,<0.11.0"]
+build-backend = "uv_build"

@@ -1,0 +1,52 @@
+@import '@fontsource-variable/manrope';
+@import '@fontsource-variable/newsreader';
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+@import 'fumadocs-twoslash/twoslash.css';
+
+:root {
+  --font-sans: 'Manrope Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Newsreader Variable', ui-serif, Georgia, serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.16), transparent 28rem),
+    radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.18), transparent 24rem),
+    linear-gradient(180deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 1));
+  background-attachment: fixed;
+}
+
+:where(h1, h2, h3, h4, .fd-page-title) {
+  font-family: var(--font-serif);
+  letter-spacing: -0.02em;
+}
+
+.docs-shell {
+  position: relative;
+}
+
+.docs-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(15, 23, 42, 0.02),
+    transparent 12rem
+  );
+}
+
+.home-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+}

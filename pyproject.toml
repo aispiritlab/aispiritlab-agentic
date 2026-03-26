@@ -1,0 +1,102 @@
+[project]
+name = "ai-spirit-agent"
+version = "0.0.1"
+description = "A short description of the project."
+authors = [
+  { name = "Order of Devs" },
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = "~=3.14.0"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
+dependencies = [
+    "knowledge-base",
+    "agentic-runtime",
+    "personal-assistant",
+    "chat",
+    "cli",
+    "core",
+    "dataloader",
+    "registry",
+    "mlflow==3.10.1",
+    "typer>=0.24.1",
+    "torchaudio>=2.11.0",
+    "onnx-asr>=0.11.0",
+    "deepeval>=3.9.2",
+    "cachetools>=7.0.5",
+    "onnxruntime>=1.24.3",
+    "mlx>=0.31.1; sys_platform == 'darwin'",
+    "mlx-lm>=0.31.1; sys_platform == 'darwin'",
+    "mlx-vlm>=0.4.1; sys_platform == 'darwin'",
+    "agentic",
+    "orjson>=3.11.7",
+    'importlib-metadata; python_version<"3.15"',
+    "structlog>=25.5.0",
+    "evaluation",
+    "gitpython>=3.1.46",
+    "transformers==5.3.0",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-markdown>=0.5.1",
+    "huggingface-hub>=1.7.2",
+    "mlx-audio; sys_platform == 'darwin'",
+    "httpx>=0.28.1",
+    "tenacity>=9.1.4",
+    "mflux>=0.17.0; sys_platform == 'darwin'",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "ruff",
+    "ty>=0.0.25",
+]
+
+
+[tool.ruff]
+line-length = 99
+src = ["src"]
+include = ["pyproject.toml", "src/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-sort-within-sections = true
+
+[tool.pytest.ini_options]
+markers = [
+    "workflow_smoke: live-model workflow smoke tests that validate a single workflow or callback.",
+    "agent_e2e_live: runtime-first live end-to-end tests for the full agentic system.",
+]
+
+[tool.uv.workspace]
+members = [
+    "packages/knowledge_base",
+    "packages/chat",
+    "packages/agentic_runtime",
+    "packages/cli",
+    "packages/evaluation",
+    "packages/core",
+    "packages/registry",
+    "packages/agentic",
+    "packages/dataloader",
+    "packages/workshops",
+    "packages/personal_assistant",
+]
+
+[tool.uv.sources]
+knowledge_base = { workspace = true }
+chat = { workspace = true }
+agentic_runtime = { workspace = true }
+agentic = { workspace = true }
+cli = { workspace = true }
+core = { workspace = true }
+registry = { workspace = true }
+evaluation = { workspace = true }
+dataloader = { workspace = true }
+personal_assistant = { workspace = true }
+mlx_audio = { git = "https://github.com/mkubasz/mlx-audio" }
