@@ -29,6 +29,19 @@ Environment variable names follow the uppercase field names used by `pydantic-se
 | `IMAGE_STEPS` | `int` | `4` | image generation flow | Sampling/inference steps. |
 | `IMAGE_OUTPUT_DIR` | `str \| null` | `None` | image generation flow | Optional output directory override. |
 
+## How Model Settings Map To Agents
+
+- `MODEL_NAME` is the default general-purpose text model. In the current Lab 6 code it backs the
+  summary role.
+- `ORCHESTRATION_MODEL_NAME` is the planning/orchestration model. In the current Lab 6 code it
+  backs the planner role.
+- `VISUAL_MODEL` is the default vision-language model for image-understanding flows.
+- `IMAGE_MODEL_NAME` is only for image generation. It is not used for text chat.
+- `API_BASE_URL`, `API_KEY`, and `API_TIMEOUT` configure the `openai` provider used for API-backed
+  agents. They choose the endpoint and transport, not the model identity.
+- Labs `0` to `5` usually choose their model IDs directly in Python workshop entrypoints and pair
+  them with `model_provider_type="mlx"` rather than reading those IDs from environment variables.
+
 ## Storage, Streaming, And API Access
 
 | Variable | Type | Default | Used by | Notes |

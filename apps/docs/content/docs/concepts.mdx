@@ -18,6 +18,107 @@ graph LR
     Dec -->|terminal| Done[WorkflowExecution]
 ```
 
+## Model
+
+A model is the inference target itself: a local text model, a vision-language model, or a remote
+model exposed through an OpenAI-compatible API.
+
+In this repo, models are usually identified by a string such as `Qwen/Qwen3.5-2B`. The runtime
+settings separate model choice from execution role:
+
+- `MODEL_NAME` for the main text model
+- `ORCHESTRATION_MODEL_NAME` for planning/routing-style work
+- `VISUAL_MODEL` for vision flows
+- `IMAGE_MODEL_NAME` for image generation
+
+`ModelConfig` carries generation settings such as `max_tokens`, `generation_mode`, and the
+resolved sampling profile.
+
+```python title="agentic/models/config.py"
+config = ModelConfig(
+    max_tokens=512,
+    generation_mode="nothinking",
+)
+```
+
+## ModelProvider
+
+`ModelProvider` is the loader and lifecycle wrapper around a concrete backend. It is the layer that
+connects agent code to `mlx`, `mlx-vlm`, `mlx-audio`, `openai`, or `onnx`.
+
+Its job is to:
+
+- choose the provider class from `model_provider_type`
+- lazily load the requested model
+- reuse a shared backend for the same `(model_name, provider_type)` pair when possible
+- expose the loaded instance through `.model` or `session("model")`
+- retain load errors so startup failures are visible to the caller
+
+```python title="workshops/lab0/__init__.py"
+model_provider = ModelProvider(
+    "Qwen/Qwen3.5-2B",
+    model_provider_type="mlx",
+    config=ModelConfig(max_tokens=512, generation_mode="nothinking"),
+)
+```
+
+The important distinction is that the provider chooses **how** inference happens, while the model
+name chooses **which** model is used.
+
+## Agent
+
+There are two useful meanings of "agent" in this codebase.
+
+First, `Agent` is the low-level LLM loop. It combines:
+
+- a `ModelProvider`
+- a `PromptBuilder`
+- conversation history and memory
+- optional toolsets
+- a response parser that turns model output into text or tool calls
+
+`Agent.run(...)` returns an `AgentResult` containing the content, reasoning, tool calls, usage, and
+prompt snapshot for that turn.
+
+```python title="workshops/lab0/__init__.py"
+agent = Agent(
+    model_provider=model_provider,
+    prompt_builder=QwenPromptBuilder(system_prompt=SYSTEM_PROMPT),
+    toolsets=toolsets,
+)
+```
+
+Second, an "agent" can also mean a named role in a workflow, such as `writer`, `critic`,
+`researcher`, `planner`, or `summary`. Those roles are often implemented with `CoreAgentic`, which
+wraps `Agent` and adds a simpler interface: `respond`, `preload_model`, `reset`, and `close`.
+
+```python title="workshops/lab3/__init__.py"
+planner = PlannerAgent(model_id=MODEL_ID, agent_names=["researcher", "writer"])
+researcher = CoreAgentic(
+    model_id=MODEL_ID,
+    prompt_builder=QwenPromptBuilder(system_prompt=RESEARCHER_SYSTEM_PROMPT),
+)
+writer = CoreAgentic(
+    model_id=MODEL_ID,
+    prompt_builder=QwenPromptBuilder(system_prompt=WRITER_SYSTEM_PROMPT),
+)
+```
+
+That means agent identity usually comes from the prompt and workflow role, not from a unique model
+class. Two agents can share the same underlying model but behave differently because they have
+different system prompts, tools, and event wiring.
+
+## Specialized Agents
+
+Some roles get a dedicated class instead of a plain `CoreAgentic` instance:
+
+- `PlannerAgent` adds a built-in `delegate_task` tool and a small planning loop.
+- `RouterAgent` chooses which agent should handle a request.
+
+In [Lab 6](/docs/workshops/lab6), "agent" becomes even broader: `planner`, `web-search`, and
+`summarize` are distributed service roles. Only some of them are LLM-backed. For example, the
+search role is primarily a search-provider handler, not a wrapper around `Agent`.
+
 ## Message
 
 The base type for everything that flows through a workflow. All messages are frozen dataclasses.

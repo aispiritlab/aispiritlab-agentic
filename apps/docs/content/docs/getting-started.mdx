@@ -11,6 +11,18 @@ You need the Python workspace dependencies first:
 uv sync
 ```
 
+## Model, Provider, And Agent
+
+The docs use these three terms in different ways:
+
+- A **model** is the inference target, for example `Qwen/Qwen3.5-2B`.
+- A **model provider** is the backend adapter that knows how to load or call that model, such as
+  `mlx`, `mlx-vlm`, or `openai`.
+- An **agent** is the prompt/history/tools layer built on top of a model provider.
+
+For Labs `0` to `5`, the current workshops are mostly local MLX agents. For Lab `6`, the planner
+and summary stages use API-backed LLM calls, while search is a non-LLM service role.
+
 ### For Labs 0 to 5
 
 Labs `0` to `5` are local-first demos and use MLX-backed model providers in the current codebase.
