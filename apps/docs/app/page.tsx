@@ -19,26 +19,23 @@ export default function HomePage() {
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10 sm:px-10 lg:px-12">
       <div className="home-card overflow-hidden rounded-[2rem]">
-        <section className="border-b border-slate-200/70 px-8 py-14 sm:px-12">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-amber-700">
+        <section className="home-hero border-b px-8 py-14 sm:px-12">
+          <p className="home-eyebrow mb-3 text-sm font-semibold uppercase tracking-[0.24em]">
             Workshop-first documentation
           </p>
-          <h1 className="max-w-4xl text-5xl leading-tight font-semibold text-slate-950 sm:text-6xl">
+          <h1 className="home-title max-w-4xl text-5xl leading-tight font-semibold sm:text-6xl">
             Learn the AI Spirit agent stack by running the labs in order.
           </h1>
-          <p className="mt-6 max-w-3xl text-lg leading-8 text-slate-700">
+          <p className="home-copy mt-6 max-w-3xl text-lg leading-8">
             These docs stay intentionally short: what the tool solves, how each workshop works,
             how to run it, and the full configuration surface for the workshop runtime.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Link
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-              href="/docs"
-            >
+            <Link className="home-primary-link rounded-full px-5 py-3 text-sm font-semibold" href="/docs">
               Open docs
             </Link>
             <Link
-              className="rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+              className="home-secondary-link rounded-full border px-5 py-3 text-sm font-semibold"
               href="/docs/reference/configuration"
             >
               Configuration reference
@@ -48,12 +45,9 @@ export default function HomePage() {
 
         <section className="grid gap-5 px-8 py-8 sm:px-12 lg:grid-cols-3">
           {cards.map((card) => (
-            <article
-              key={card.title}
-              className="rounded-[1.5rem] border border-slate-200 bg-white/80 p-6"
-            >
-              <h2 className="text-2xl font-semibold text-slate-950">{card.title}</h2>
-              <p className="mt-3 text-base leading-7 text-slate-700">{card.body}</p>
+            <article key={card.title} className="home-feature-card rounded-[1.5rem] border p-6">
+              <h2 className="home-feature-title text-2xl font-semibold">{card.title}</h2>
+              <p className="home-feature-copy mt-3 text-base leading-7">{card.body}</p>
             </article>
           ))}
         </section>

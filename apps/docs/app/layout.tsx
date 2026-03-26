@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="docs-shell flex min-h-screen flex-col text-slate-950">
+      <body className="docs-shell flex min-h-screen flex-col">
         <Provider>{children}</Provider>
       </body>
     </html>

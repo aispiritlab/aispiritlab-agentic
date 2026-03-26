@@ -16,6 +16,8 @@ html {
 
 body {
   font-family: var(--font-sans);
+  color: rgb(15 23 42);
+  color-scheme: light;
   background:
     radial-gradient(circle at top left, rgba(252, 211, 77, 0.16), transparent 28rem),
     radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.18), transparent 24rem),
@@ -24,6 +26,8 @@ body {
 }
 
 .dark body {
+  color: rgb(226 232 240);
+  color-scheme: dark;
   background:
     radial-gradient(circle at top left, rgba(252, 211, 77, 0.06), transparent 28rem),
     radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.08), transparent 24rem),
@@ -70,4 +74,97 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(20, 20, 35, 0.75);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.home-hero {
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+.dark .home-hero {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.home-eyebrow {
+  color: rgb(180 83 9);
+}
+
+.dark .home-eyebrow {
+  color: rgb(252 211 77);
+}
+
+.home-title,
+.home-feature-title {
+  color: rgb(15 23 42);
+}
+
+.dark .home-title,
+.dark .home-feature-title {
+  color: rgb(241 245 249);
+}
+
+.home-copy,
+.home-feature-copy {
+  color: rgb(51 65 85);
+}
+
+.dark .home-copy,
+.dark .home-feature-copy {
+  color: rgb(203 213 225);
+}
+
+.home-primary-link {
+  background: rgb(15 23 42);
+  color: white;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.home-primary-link:hover {
+  background: rgb(30 41 59);
+}
+
+.dark .home-primary-link {
+  background: rgb(248 250 252);
+  color: rgb(15 23 42);
+}
+
+.dark .home-primary-link:hover {
+  background: rgb(226 232 240);
+}
+
+.home-secondary-link {
+  border-color: rgba(148, 163, 184, 0.6);
+  background: rgba(255, 255, 255, 0.86);
+  color: rgb(30 41 59);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.home-secondary-link:hover {
+  border-color: rgba(100, 116, 139, 0.65);
+  background: rgba(248, 250, 252, 0.96);
+}
+
+.dark .home-secondary-link {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.5);
+  color: rgb(226 232 240);
+}
+
+.dark .home-secondary-link:hover {
+  border-color: rgba(148, 163, 184, 0.42);
+  background: rgba(30, 41, 59, 0.72);
+}
+
+.home-feature-card {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.dark .home-feature-card {
+  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.42);
 }
