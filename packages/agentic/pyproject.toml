@@ -22,6 +22,11 @@ test = [
     "pytest>=9.0.0",
 ]
 
+# Optional provider dependencies (install separately, Python <3.14 required for some):
+# pip install vllm>=0.18.1 openai>=2.30.0      # for VLLMProvider
+# pip install ray>=2.54.1                       # for VLLMProvider ray strategy
+# pip install transformers>=5.3.0 torch>=2.11.0 accelerate>=1.13.0  # for TransformersProvider
+
 [build-system]
 requires = ["uv_build>=0.10.5,<0.11.0"]
 build-backend = "uv_build"

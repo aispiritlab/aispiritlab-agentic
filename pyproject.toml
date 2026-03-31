@@ -36,6 +36,7 @@ dependencies = [
     'importlib-metadata; python_version<"3.15"',
     "structlog>=25.5.0",
     "evaluation",
+    "agentic-graph",
     "gitpython>=3.1.46",
     "transformers==5.3.0",
     "tree-sitter>=0.25.2",
@@ -86,6 +87,7 @@ members = [
     "packages/dataloader",
     "packages/workshops",
     "packages/personal_assistant",
+    "packages/agentic_graph",
 ]
 
 [tool.uv.sources]
@@ -99,4 +101,5 @@ registry = { workspace = true }
 evaluation = { workspace = true }
 dataloader = { workspace = true }
 personal_assistant = { workspace = true }
+agentic_graph = { workspace = true }
 mlx_audio = { git = "https://github.com/mkubasz/mlx-audio" }

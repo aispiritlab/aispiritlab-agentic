@@ -318,6 +318,11 @@ def create_chat_ui() -> gr.Blocks:
                         interactive=False,
                     )
 
+                with gr.Tab("Agent Builder"):
+                    from agentic_graph import build_agent_builder_tab
+
+                    build_agent_builder_tab()
+
                 with gr.Tab("Trenowanie"):
                     gr.Markdown("## Trenowanie")
                     training_start_btn = gr.Button("Rozpocznij", variant="primary")

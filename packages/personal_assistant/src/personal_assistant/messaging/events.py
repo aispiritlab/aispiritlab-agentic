@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agentic.workflow.messages import Event
+from agentic_runtime.distributed.serialization import register_record_types
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -66,3 +67,6 @@ class NoteDeleted(Event):
                     "note_path": self.note_path,
                 },
             )
+
+
+register_record_types(CreatedNote, NoteUpdated, NoteDeleted)

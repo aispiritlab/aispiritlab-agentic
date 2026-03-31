@@ -1,7 +1,7 @@
 [project]
-name = "personal-assistant"
+name = "agentic-graph"
 version = "0.1.0"
-description = "Personal Assistant — multi-agent system for note management, search, and decision support"
+description = "Visual agent composition with PixiJS canvas, validation, and builder code generation"
 readme = "README.md"
 authors = [
     { name = "Mateusz Kubaszek", email = "mkubasz@gmail.com" }
@@ -9,17 +9,15 @@ authors = [
 requires-python = "==3.14.*"
 dependencies = [
     "agentic",
-    "agentic-graph",
     "agentic-runtime",
     "chat",
-    "evaluation",
+    "gradio",
     "knowledge-base",
-    "registry",
     "structlog>=25.5.0",
 ]
 
 [project.scripts]
-personal-assistant = "personal_assistant:main"
+agentic-graph = "agentic_graph:main"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]

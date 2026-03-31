@@ -13,10 +13,12 @@ from agentic.providers.api import OpenAIProvider
 from agentic.providers.mlx import MlxAudioProvider, MlxProvider
 from agentic.providers.mlx.mlx_vlm import MlxVlmProvider
 from agentic.providers.onnx import OnnxAsrProvider
+from agentic.providers.transformers import TransformersProvider
+from agentic.providers.vllm import VLLMProvider
 
 logger = get_logger(__name__)
 
-ModelProviderType = Literal["onnx", "mlx", "mlx-audio", "mlx-vlm", "openai"]
+ModelProviderType = Literal["onnx", "mlx", "mlx-audio", "mlx-vlm", "openai", "vllm", "transformers"]
 
 SUPPORTED_PROVIDERS = {
     "mlx-audio": MlxAudioProvider,
@@ -24,6 +26,8 @@ SUPPORTED_PROVIDERS = {
     "mlx": MlxProvider,
     "onnx": OnnxAsrProvider,
     "openai": OpenAIProvider,
+    "vllm": VLLMProvider,
+    "transformers": TransformersProvider,
 }
 
 
