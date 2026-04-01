@@ -3,8 +3,10 @@ from __future__ import annotations
 from agentic.core_agent import CoreAgentic
 from agentic.metadata import Description
 from agentic.models import ModelConfig
-from agentic.prompts import QwenPromptBuilder, PromptTemplate
+from agentic.prompts import PromptTemplate
 from agentic.providers.provider import ModelProviderType
+
+from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder
 
 _ROUTER_SYSTEM_PROMPT = (
     "You are a router. Given the list of available agents and the user message, "
@@ -30,7 +32,10 @@ class RouterAgent(CoreAgentic):
     ) -> None:
         super().__init__(
             model_id=model_id,
-            prompt_builder=QwenPromptBuilder(system_prompt=_ROUTER_SYSTEM_PROMPT),
+            prompt_builder=build_specialized_prompt_builder(
+                system_prompt=_ROUTER_SYSTEM_PROMPT,
+                model_provider_type=model_provider_type,
+            ),
             config=ModelConfig(max_tokens=20, generation_mode="orchestration"),
             model_provider_type=model_provider_type,
         )

@@ -6,7 +6,14 @@ import pytest
 
 from agentic_runtime.messaging.consumer import ConsumerConfig, MessageConsumer, StepLimitExceeded
 from agentic_runtime.messaging.message_stream import InMemoryMessageStream
-from agentic_runtime.messaging.messages import AssistantMessage, Event, Message, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    Event,
+    Message,
+    RecordedMessageMetadata,
+    UserMessage,
+)
 from agentic_runtime.reactor import Reactor
 
 
@@ -26,9 +33,11 @@ class FakeReactor:
     def invoke(self, command: Message) -> Message:
         self.invocations.append(command)
         return AssistantMessage(
-            text=self._response_text,
-            domain=command.domain,
-            source="fake-reactor",
+            data=ConversationData(role="assistant", text=self._response_text),
+            metadata=RecordedMessageMetadata(
+                domain=command.metadata.domain,
+                source="fake-reactor",
+            ),
         )
 
 
@@ -47,18 +56,21 @@ class FailingReactor:
         self._call_count += 1
         if self._call_count <= self._failures:
             raise self._error_type(f"fail #{self._call_count}")
-        return AssistantMessage(text="recovered", source="fake")
+        return AssistantMessage(
+            data=ConversationData(role="assistant", text="recovered"),
+            metadata=RecordedMessageMetadata(source="fake"),
+        )
 
 
 # --- Helpers ---
 
 
 def _user(text: str) -> UserMessage:
-    return UserMessage(text=text)
+    return UserMessage(data=ConversationData(role="user", text=text))
 
 
 def _event(name: str) -> Event:
-    return Event(name=name)
+    return Event(type=name)
 
 
 def _noop_decider(msg: Message) -> Sequence[Message]:
@@ -69,7 +81,13 @@ def _noop_decider(msg: Message) -> Sequence[Message]:
 def _echo_decider(msg: Message) -> Sequence[Message]:
     """Decider that echoes UserMessage as an Event command, ignores the rest."""
     if isinstance(msg, UserMessage):
-        return [Event(name="process", text=msg.text, domain=msg.domain)]
+        return [
+            Event(
+                type="process",
+                data={"text": msg.data.text},
+                metadata=RecordedMessageMetadata(domain=msg.metadata.domain),
+            )
+        ]
     return []
 
 
@@ -133,7 +151,7 @@ class TestMessageConsumerBasicFlow:
         assert len(messages) == 2
         assert isinstance(messages[0], UserMessage)
         assert isinstance(messages[1], AssistantMessage)
-        assert messages[1].text == "result"
+        assert messages[1].data.text == "result"
 
     def test_reactor_receives_correct_command(self) -> None:
         reactor = FakeReactor()
@@ -147,7 +165,7 @@ class TestMessageConsumerBasicFlow:
         consumer.consume(stream, _echo_decider, routing)
 
         assert len(reactor.invocations) == 1
-        assert reactor.invocations[0].text == "data"
+        assert reactor.invocations[0].data == {"text": "data"}
 
 
 class TestMessageConsumerStepLimit:
@@ -155,7 +173,7 @@ class TestMessageConsumerStepLimit:
         """Decider that always produces a command creates infinite loop → step limit."""
 
         def infinite_decider(msg: Message) -> Sequence[Message]:
-            return [Event(name="loop")]
+            return [Event(type="loop")]
 
         config = ConsumerConfig(max_steps=5)
         consumer = MessageConsumer(config=config)
@@ -182,7 +200,10 @@ class TestMessageConsumerRetry:
         consumer.consume(stream, _echo_decider, routing)
 
         messages = stream.all_messages()
-        assert any(m.text == "recovered" for m in messages)
+        assert any(
+            isinstance(m, AssistantMessage) and m.data.text == "recovered"
+            for m in messages
+        )
 
     def test_raises_non_retryable_error(self) -> None:
         reactor = FailingReactor(failures=1, error_type=ValueError)
@@ -220,11 +241,11 @@ class TestMessageConsumerMultiStep:
         def chain_decider(msg: Message) -> Sequence[Message]:
             nonlocal step_count
             if isinstance(msg, UserMessage):
-                return [Event(name="step1")]
-            if isinstance(msg, Event) and msg.name == "step1":
-                return [Event(name="step2")]
-            if isinstance(msg, Event) and msg.name == "step2":
-                return [Event(name="done")]
+                return [Event(type="step1")]
+            if isinstance(msg, Event) and msg.type == "step1":
+                return [Event(type="step2")]
+            if isinstance(msg, Event) and msg.type == "step2":
+                return [Event(type="done")]
             return []
 
         stream = InMemoryMessageStream()
@@ -234,7 +255,7 @@ class TestMessageConsumerMultiStep:
         consumer.consume(stream, chain_decider, _noop_routing)
 
         messages = stream.all_messages()
-        names = [m.name for m in messages if isinstance(m, Event)]
+        names = [m.type for m in messages if isinstance(m, Event)]
         assert names == ["step1", "step2", "done"]
 
     def test_decider_fans_out_multiple_commands(self) -> None:
@@ -244,8 +265,8 @@ class TestMessageConsumerMultiStep:
         def fan_out_decider(msg: Message) -> Sequence[Message]:
             if isinstance(msg, UserMessage):
                 return [
-                    Event(name="task_a", text="a"),
-                    Event(name="task_b", text="b"),
+                    Event(type="task_a", data={"text": "a"}),
+                    Event(type="task_b", data={"text": "b"}),
                 ]
             return []
 
@@ -262,5 +283,5 @@ class TestMessageConsumerMultiStep:
         # Events routed to reactor → NOT in stream (only reactor outputs are)
         results = [m for m in messages if isinstance(m, AssistantMessage)]
         assert len(results) == 2
-        assert reactor.invocations[0].name == "task_a"
-        assert reactor.invocations[1].name == "task_b"
+        assert reactor.invocations[0].type == "task_a"
+        assert reactor.invocations[1].type == "task_b"

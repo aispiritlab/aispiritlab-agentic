@@ -3,13 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 import tomllib
 
-from agentic.specialized_agents.events import TaskDelegated
+import orjson
+import pytest
+
 from agentic_graph import AgenticGraphBuilder
+from agentic_graph.compiler import compile_graph
+from agentic_graph.events import GraphCompletionEvent
 from agentic_graph.models import AgentGraph, AgentNode, Connection, NodePosition
+from agentic_graph.registry import get_block_by_name
 from agentic_graph.runtime import run_graph_runtime
 from agentic_graph.serialization import graph_from_json, graph_to_json
 from agentic_graph.tab import _sanitize_graph_and_secrets
-import pytest
+from agentic_runtime.distributed.serialization import deserialize_record, serialize_record
+from agentic_runtime.storage.projections import GenericProjection
+from agentic.workflow.messages import RecordedMessageMetadata
 
 
 def _node(
@@ -32,143 +39,60 @@ def _node(
     )
 
 
-def _valid_graph() -> AgentGraph:
+def _shared_provider() -> AgentNode:
+    return _node(
+        "provider-1",
+        "model_provider",
+        display_name="Shared Provider",
+        node_type="provider",
+        config=(
+            ("provider_type", "openai"),
+            ("model_id", "shared-model"),
+        ),
+    )
+
+
+def test_model_provider_defaults_match_local_runtime_model_id() -> None:
+    block = get_block_by_name("model_provider")
+
+    assert block is not None
+    assert ("model_id", "qwen3.5-4b") in block.config_defaults
+
+
+def test_compile_graph_falls_back_to_local_runtime_model_id() -> None:
+    graph = AgentGraph(
+        graph_id="graph-provider-default",
+        name="Provider Default",
+        nodes=(
+            _node("entry-1", "llm_chat", display_name="Entry", node_type="agent"),
+            _node("provider-1", "model_provider", display_name="Provider", node_type="provider"),
+        ),
+        connections=(Connection("conn-1", "provider-1", "entry-1"),),
+        entry_node_id="entry-1",
+    )
+
+    compiled = compile_graph(graph)
+
+    assert compiled.providers["provider-1"].model_id == "qwen3.5-4b"
+
+
+def _three_search_graph(output_path: str) -> AgentGraph:
     return AgentGraph(
-        graph_id="graph-1",
-        name="Search Workflow",
-        nodes=(
-            _node("planner-1", "planner", display_name="Planner", node_type="agent"),
-            _node("searcher-1", "searcher", display_name="Search Tavily", node_type="agent"),
-            _node(
-                "integration-1",
-                "tavily_search",
-                display_name="Tavily",
-                node_type="integration",
-                config=(("api_key_env", "TAVILY_API_KEY"),),
-            ),
-            _node(
-                "output-1",
-                "markdown_output",
-                display_name="Markdown",
-                node_type="structural_output",
-                config=(("path", "outputs/search.md"),),
-            ),
-        ),
-        connections=(
-            Connection("conn-1", "planner-1", "searcher-1"),
-            Connection("conn-2", "integration-1", "searcher-1"),
-            Connection("conn-3", "searcher-1", "output-1"),
-        ),
-        entry_node_id="planner-1",
-    )
-
-
-def test_builder_accepts_planner_search_markdown_graph() -> None:
-    builder = AgenticGraphBuilder(_valid_graph())
-    issues = builder.validate()
-
-    assert not [issue for issue in issues if issue.level == "error"]
-    summary = builder.generate_summary()
-    assert "Search Workflow" in summary
-    assert "Connections" in summary
-    assert "Markdown" in summary
-
-
-def test_builder_accepts_searcher_to_integration_attachment() -> None:
-    graph = AgentGraph(
-        graph_id="graph-reverse",
-        name="Reverse Integration Edge",
-        nodes=(
-            _node("planner-1", "planner", display_name="Planner", node_type="agent"),
-            _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
-            _node(
-                "integration-1",
-                "tavily_search",
-                display_name="Tavily",
-                node_type="integration",
-                config=(("api_key_env", "TAVILY_API_KEY"),),
-            ),
-        ),
-        connections=(
-            Connection("conn-1", "planner-1", "searcher-1"),
-            Connection("conn-2", "searcher-1", "integration-1"),
-        ),
-        entry_node_id="planner-1",
-    )
-
-    issues = AgenticGraphBuilder(graph).validate()
-
-    assert not [issue for issue in issues if issue.level == "error"]
-    code = AgenticGraphBuilder(graph).generate_python()
-    assert "SearchAgent" in code
-    assert "TavilySearchProvider" in code
-
-
-def test_builder_rejects_invalid_output_to_agent_edge() -> None:
-    graph = AgentGraph(
-        graph_id="graph-2",
-        name="Invalid Workflow",
+        graph_id="graph-search-v2",
+        name="Search Workflow V2",
         nodes=(
             _node(
-                "output-1",
-                "markdown_output",
-                display_name="Markdown",
-                node_type="structural_output",
-                config=(("path", "outputs/search.md"),),
+                "entry-1",
+                "llm_chat",
+                display_name="Entry",
+                node_type="agent",
+                config=(("dispatch_mode", "broadcast"),),
             ),
-            _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
-            _node(
-                "integration-1",
-                "tavily_search",
-                display_name="Tavily",
-                node_type="integration",
-                config=(("api_key_env", "TAVILY_API_KEY"),),
-            ),
-        ),
-        connections=(
-            Connection("conn-1", "output-1", "searcher-1"),
-            Connection("conn-2", "integration-1", "searcher-1"),
-        ),
-        entry_node_id="searcher-1",
-    )
-
-    issues = AgenticGraphBuilder(graph).validate()
-
-    assert any("Unsupported connection" in issue.message for issue in issues if issue.level == "error")
-
-
-def test_builder_treats_unwired_searcher_as_warning_during_editing() -> None:
-    graph = AgentGraph(
-        graph_id="graph-draft",
-        name="Draft Workflow",
-        nodes=(
-            _node("planner-1", "planner", display_name="Planner", node_type="agent"),
-            _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
-        ),
-        connections=(Connection("conn-1", "planner-1", "searcher-1"),),
-        entry_node_id="planner-1",
-    )
-
-    issues = AgenticGraphBuilder(graph).validate()
-
-    assert not [issue for issue in issues if issue.level == "error"]
-    assert any("not wired yet" in issue.message for issue in issues if issue.level == "warning")
-    try:
-        AgenticGraphBuilder(graph).generate_python()
-    except ValueError as error:
-        assert "requires exactly one connected search integration block" in str(error)
-    else:
-        raise AssertionError("generate_python() should fail for an unwired searcher")
-
-
-def test_generate_python_code_uses_typed_wiring_and_aliases() -> None:
-    graph = AgentGraph(
-        graph_id="graph-3",
-        name="Dual Search Workflow",
-        nodes=(
-            _node("planner-1", "planner", display_name="Planner", node_type="agent"),
             _node("searcher-1", "searcher", display_name="Search Tavily", node_type="agent"),
             _node("searcher-2", "searcher", display_name="Search Valyu", node_type="agent"),
+            _node("searcher-3", "searcher", display_name="Search Notes", node_type="agent"),
+            _node("summarizer-1", "summarizer", display_name="Summarizer", node_type="agent"),
+            _shared_provider(),
             _node(
                 "integration-1",
                 "tavily_search",
@@ -184,95 +108,159 @@ def test_generate_python_code_uses_typed_wiring_and_aliases() -> None:
                 config=(("api_key_env", "VALYU_API_KEY"),),
             ),
             _node(
+                "integration-3",
+                "tavily_search",
+                display_name="Notes Search",
+                node_type="integration",
+                config=(("api_key_env", "NOTES_TAVILY_API_KEY"),),
+            ),
+            _node(
                 "output-1",
                 "markdown_output",
                 display_name="Markdown",
                 node_type="structural_output",
-                config=(("path", "outputs/search.md"),),
+                config=(("path", output_path),),
             ),
         ),
         connections=(
-            Connection("conn-1", "planner-1", "searcher-1"),
-            Connection("conn-2", "planner-1", "searcher-2"),
-            Connection("conn-3", "integration-1", "searcher-1"),
-            Connection("conn-4", "integration-2", "searcher-2"),
-            Connection("conn-5", "searcher-1", "output-1"),
-            Connection("conn-6", "searcher-2", "output-1"),
+            Connection("conn-1", "entry-1", "searcher-1"),
+            Connection("conn-2", "entry-1", "searcher-2"),
+            Connection("conn-3", "entry-1", "searcher-3"),
+            Connection("conn-4", "provider-1", "entry-1"),
+            Connection("conn-5", "provider-1", "searcher-1"),
+            Connection("conn-6", "provider-1", "searcher-2"),
+            Connection("conn-7", "provider-1", "searcher-3"),
+            Connection("conn-8", "provider-1", "summarizer-1"),
+            Connection("conn-9", "searcher-1", "integration-1"),
+            Connection("conn-10", "searcher-2", "integration-2"),
+            Connection("conn-11", "searcher-3", "integration-3"),
+            Connection("conn-12", "searcher-1", "summarizer-1"),
+            Connection("conn-13", "searcher-2", "summarizer-1"),
+            Connection("conn-14", "searcher-3", "summarizer-1"),
+            Connection("conn-15", "summarizer-1", "output-1"),
         ),
-        entry_node_id="planner-1",
+        entry_node_id="entry-1",
     )
 
-    code = AgenticGraphBuilder(graph).generate_python()
 
-    assert "PlannerAgent" in code
-    assert "SearchAgent" in code
-    assert "TavilySearchProvider" in code
-    assert "ValyuSearchProvider" in code
-    assert "delegation_map['planner'] = ['search_tavily', 'search_valyu']" in code
-    assert "output_map['search_tavily'] = ['markdown']" in code
+def test_builder_accepts_three_searchers_with_shared_provider(tmp_path: Path) -> None:
+    builder = AgenticGraphBuilder(_three_search_graph(str(tmp_path / "search.md")))
+    issues = builder.validate()
 
-
-def test_generate_python_code_uses_env_var_only_and_redacts_legacy_secret() -> None:
-    graph = AgentGraph(
-        graph_id="graph-5",
-        name="Token Workflow",
-        nodes=(
-            _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
-            _node(
-                "integration-1",
-                "tavily_search",
-                display_name="Tavily",
-                node_type="integration",
-                config=(("api_key", "secret-token"), ("api_key_env", "TAVILY_API_KEY")),
-            ),
-        ),
-        connections=(Connection("conn-1", "searcher-1", "integration-1"),),
-        entry_node_id="searcher-1",
-    )
-
-    builder = AgenticGraphBuilder(graph)
-    code = builder.generate_python()
+    assert not [issue for issue in issues if issue.level == "error"]
     summary = builder.generate_summary()
-
-    assert "os.getenv('TAVILY_API_KEY')" in code
-    assert "secret-token" not in code
-    assert "api_key=***" in summary
-    assert "secret-token" not in summary
+    assert "Provider Blocks" in summary
+    assert "Shared Provider" in summary
+    assert "Summarizer" in summary
 
 
-def test_validation_accepts_runtime_secret_for_preview_readiness() -> None:
+def test_builder_warns_for_unwired_searcher_and_provider() -> None:
     graph = AgentGraph(
-        graph_id="graph-6",
-        name="Preview Workflow",
+        graph_id="graph-draft",
+        name="Draft Workflow",
+        nodes=(
+            _node("entry-1", "llm_chat", display_name="Entry", node_type="agent"),
+            _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
+            _shared_provider(),
+        ),
+        connections=(Connection("conn-1", "provider-1", "entry-1"),),
+        entry_node_id="entry-1",
+    )
+
+    issues = AgenticGraphBuilder(graph).validate()
+
+    assert not [issue for issue in issues if issue.level == "error"]
+    messages = [issue.message for issue in issues if issue.level == "warning"]
+    assert any("Searcher 'Searcher' is not wired yet" in message for message in messages)
+    assert any("Agent 'Searcher' has no connected provider block" in message for message in messages)
+
+
+def test_generate_python_code_uses_workflow_runtime_and_graph_events(tmp_path: Path) -> None:
+    code = AgenticGraphBuilder(_three_search_graph(str(tmp_path / "search.md"))).generate_python()
+
+    assert "WorkflowBuilder" in code
+    assert "WorkflowRuntime" in code
+    assert "GraphDispatchEvent" in code
+    assert "GraphCompletionEvent" in code
+    assert "build_compiled_graph_system" in code
+    assert "graph_from_dict" in code
+
+
+def test_graph_completion_event_round_trips_through_serializer() -> None:
+    message = GraphCompletionEvent(
+        source_node_id="searcher-1",
+        source_alias="search_tavily",
+        text="Found fresh sources.",
+        summarizer_node_ids=("summarizer-1",),
+        payload={"agent_name": "searcher"},
+        metadata=RecordedMessageMetadata(
+            runtime_id="runtime-1",
+            turn_id="turn-1",
+            source="graph",
+        ),
+    )
+
+    restored = deserialize_record(serialize_record(message))
+
+    assert isinstance(restored, GraphCompletionEvent)
+    assert restored.type == "graph_completion"
+    assert restored.source_node_id == "searcher-1"
+    assert restored.source_alias == "search_tavily"
+    assert restored.text == "Found fresh sources."
+    assert restored.summarizer_node_ids == ("summarizer-1",)
+    assert restored.payload == {"agent_name": "searcher"}
+
+
+def test_graph_completion_event_projection_preserves_text_and_payload() -> None:
+    message = GraphCompletionEvent(
+        source_node_id="searcher-1",
+        source_alias="search_tavily",
+        text="Found fresh sources.",
+        summarizer_node_ids=("summarizer-1",),
+        payload={"agent_name": "searcher"},
+        metadata=RecordedMessageMetadata(
+            runtime_id="runtime-1",
+            turn_id="turn-1",
+            source="graph",
+        ),
+    )
+
+    row = GenericProjection().handle(message)
+
+    assert row.name == "graph_completion"
+    assert row.text == "Found fresh sources."
+    assert orjson.loads(row.payload_json or b"{}") == {
+        "source_node_id": "searcher-1",
+        "source_alias": "search_tavily",
+        "text": "Found fresh sources.",
+        "summarizer_node_ids": ["summarizer-1"],
+        "payload": {"agent_name": "searcher"},
+    }
+
+
+def test_generate_python_code_requires_env_var_for_connected_search_integrations(tmp_path: Path) -> None:
+    graph = AgentGraph(
+        graph_id="graph-env-var",
+        name="Env Var Workflow",
         nodes=(
             _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
+            _shared_provider(),
             _node(
                 "integration-1",
                 "tavily_search",
-                display_name="Tavily",
+                display_name="Broken Search",
                 node_type="integration",
             ),
         ),
-        connections=(Connection("conn-1", "searcher-1", "integration-1"),),
+        connections=(
+            Connection("conn-1", "provider-1", "searcher-1"),
+            Connection("conn-2", "searcher-1", "integration-1"),
+        ),
         entry_node_id="searcher-1",
     )
 
-    issues_without_secret = AgenticGraphBuilder(graph).validate()
-    issues_with_secret = AgenticGraphBuilder(
-        graph,
-        runtime_secrets={"integration-1": "session-token"},
-    ).validate()
-
-    assert any(
-        "has no API token configured" in issue.message
-        for issue in issues_without_secret
-        if issue.level == "warning"
-    )
-    assert not any(
-        "has no API token configured" in issue.message
-        for issue in issues_with_secret
-        if issue.level == "warning"
-    )
+    with pytest.raises(ValueError, match="API token"):
+        AgenticGraphBuilder(graph).generate_python()
 
 
 def test_tab_sanitizer_moves_legacy_api_key_to_session_secrets() -> None:
@@ -301,166 +289,166 @@ def test_tab_sanitizer_moves_legacy_api_key_to_session_secrets() -> None:
     assert secret_state == {"integration-1": "secret-token"}
 
 
-def test_run_graph_runtime_executes_searcher_and_writes_output(
+class _StubProvider:
+    def __init__(self, api_key: str) -> None:
+        self.api_key = api_key
+
+    def close(self) -> None:
+        return None
+
+
+class _StubAgentResult:
+    def __init__(self) -> None:
+        self.tool_calls = ()
+        self.run_id = "run-1"
+        self.prompt_snapshot = None
+        self.trace = None
+        self.attempt_no = None
+        self.loop_iteration = None
+
+
+class _StubResponse:
+    def __init__(self, output: str) -> None:
+        self.output = output
+        self.result = _StubAgentResult()
+        self.tool_results = ()
+
+
+class _StubLLMCall:
+    def __init__(self, model_name: str, *, model_provider_type: str = "openai", **_: object) -> None:
+        self.model_name = model_name
+        self.model_provider_type = model_provider_type
+
+    def respond(self, message: str) -> _StubResponse:
+        return _StubResponse(f"entry:{message}:{self.model_name}:{self.model_provider_type}")
+
+    def close(self) -> None:
+        return None
+
+
+class _StubSearchAgent:
+    def __init__(
+        self,
+        model_id: str,
+        search_provider,
+        *,
+        knowledge_base=None,
+        model_provider_type: str = "openai",
+    ) -> None:
+        del knowledge_base
+        self.model_id = model_id
+        self.search_provider = search_provider
+        self.model_provider_type = model_provider_type
+
+    def respond(self, message: str) -> _StubResponse:
+        return _StubResponse(
+            f"search:{message}:{self.search_provider.api_key}:{self.model_id}:{self.model_provider_type}"
+        )
+
+    def close(self) -> None:
+        return None
+
+
+class _StubSummarizer:
+    def __init__(self, model_id: str, *, model_provider_type: str = "openai", **_: object) -> None:
+        self.model_id = model_id
+        self.model_provider_type = model_provider_type
+
+    def summarize(self, text: str) -> str:
+        return f"summary:{self.model_id}:{self.model_provider_type}:{text}"
+
+    def close(self) -> None:
+        return None
+
+
+class _StubRouteOneRouter:
+    def __init__(self, model_id: str, *, model_provider_type: str = "openai", **_: object) -> None:
+        self.model_id = model_id
+        self.model_provider_type = model_provider_type
+
+    def route(self, message: str, available_agents: str) -> str:
+        del message, available_agents
+        return "search_valyu"
+
+    def close(self) -> None:
+        return None
+
+
+def test_run_graph_runtime_broadcasts_to_three_searchers_and_summarizes(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    graph = AgentGraph(
-        graph_id="graph-runtime-1",
-        name="Runtime Search Workflow",
-        nodes=(
-            _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
-            _node(
-                "integration-1",
-                "tavily_search",
-                display_name="Tavily",
-                node_type="integration",
-            ),
-            _node(
-                "output-1",
-                "markdown_output",
-                display_name="Markdown",
-                node_type="structural_output",
-                config=(("path", str(tmp_path / "runtime.md")),),
-            ),
-        ),
-        connections=(
-            Connection("conn-1", "searcher-1", "integration-1"),
-            Connection("conn-2", "searcher-1", "output-1"),
-        ),
-        entry_node_id="searcher-1",
-    )
+    monkeypatch.chdir(tmp_path)
+    graph = _three_search_graph(str(tmp_path / "runtime.md"))
 
-    class FakeProvider:
-        def __init__(self, api_key: str) -> None:
-            self.api_key = api_key
+    monkeypatch.setattr("agentic_graph.compiler.TavilySearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.ValyuSearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.LLMCall", _StubLLMCall)
+    monkeypatch.setattr("agentic_graph.compiler.SearchAgent", _StubSearchAgent)
+    monkeypatch.setattr("agentic_graph.compiler.SummarizationAgent", _StubSummarizer)
+    monkeypatch.setenv("TAVILY_API_KEY", "env-tavily")
+    monkeypatch.setenv("VALYU_API_KEY", "env-valyu")
+    monkeypatch.setenv("NOTES_TAVILY_API_KEY", "env-notes")
 
-        def close(self) -> None:
-            return None
-
-    class FakeSearchAgent:
-        def __init__(
-            self,
-            model_id: str,
-            search_provider,
-            *,
-            knowledge_base=None,
-            model_provider_type: str = "openai",
-        ) -> None:
-            del model_id, knowledge_base, model_provider_type
-            self.search_provider = search_provider
-
-        def search(self, message: str) -> str:
-            return f"search:{message}:{self.search_provider.api_key}"
-
-        def close(self) -> None:
-            return None
-
-    monkeypatch.setattr("agentic_graph.runtime.OpenAIProvider.configure", lambda **_: None)
-    monkeypatch.setattr("agentic_graph.runtime.TavilySearchProvider", FakeProvider)
-    monkeypatch.setattr("agentic_graph.runtime.SearchAgent", FakeSearchAgent)
-
-    result = run_graph_runtime(
-        graph,
-        "latest updates",
-        runtime_secrets={"integration-1": "session-token"},
-    )
+    result = run_graph_runtime(graph, "latest updates")
 
     output_path = tmp_path / "runtime.md"
-
     assert result.status == "ok"
-    assert result.entry_agent == "searcher"
-    assert result.response == "search:latest updates:session-token"
+    assert result.entry_agent == "entry"
+    assert "summary:shared-model:openai:" in result.response
+    assert "search:latest updates:env-tavily:shared-model:openai" in result.response
+    assert "search:latest updates:env-valyu:shared-model:openai" in result.response
+    assert "search:latest updates:env-notes:shared-model:openai" in result.response
     assert output_path.read_text(encoding="utf-8") == result.response
-    assert result.outputs[0].path == str(output_path)
+    assert any("entry -> search_tavily" in step for step in result.steps)
+    assert any("summarizer: summarizing 3 event(s)" in step for step in result.steps)
 
 
-def test_run_graph_runtime_executes_planner_delegation(monkeypatch) -> None:
+def test_run_graph_runtime_route_one_dispatches_single_target(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    graph = _three_search_graph(str(tmp_path / "runtime-route-one.md"))
+    nodes = []
+    for node in graph.nodes:
+        if node.node_id == "entry-1":
+            nodes.append(
+                _node(
+                    "entry-1",
+                    "llm_chat",
+                    display_name="Entry",
+                    node_type="agent",
+                    config=(("dispatch_mode", "route_one"),),
+                )
+            )
+        else:
+            nodes.append(node)
     graph = AgentGraph(
-        graph_id="graph-runtime-2",
-        name="Runtime Planner Workflow",
-        nodes=(
-            _node("planner-1", "planner", display_name="Planner", node_type="agent"),
-            _node("searcher-1", "searcher", display_name="Searcher", node_type="agent"),
-            _node(
-                "integration-1",
-                "tavily_search",
-                display_name="Tavily",
-                node_type="integration",
-                config=(("api_key_env", "TAVILY_API_KEY"),),
-            ),
-        ),
-        connections=(
-            Connection("conn-1", "planner-1", "searcher-1"),
-            Connection("conn-2", "searcher-1", "integration-1"),
-        ),
-        entry_node_id="planner-1",
+        graph_id=graph.graph_id,
+        name=graph.name,
+        nodes=tuple(nodes),
+        connections=graph.connections,
+        entry_node_id=graph.entry_node_id,
     )
 
-    class FakeProvider:
-        def __init__(self, api_key: str) -> None:
-            self.api_key = api_key
+    monkeypatch.setattr("agentic_graph.compiler.TavilySearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.ValyuSearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.LLMCall", _StubLLMCall)
+    monkeypatch.setattr("agentic_graph.compiler.SearchAgent", _StubSearchAgent)
+    monkeypatch.setattr("agentic_graph.compiler.SummarizationAgent", _StubSummarizer)
+    monkeypatch.setattr("agentic_graph.compiler.GenericRouter", _StubRouteOneRouter)
+    monkeypatch.setenv("TAVILY_API_KEY", "env-tavily")
+    monkeypatch.setenv("VALYU_API_KEY", "env-valyu")
+    monkeypatch.setenv("NOTES_TAVILY_API_KEY", "env-notes")
 
-        def close(self) -> None:
-            return None
-
-    class FakePlannerAgent:
-        def __init__(
-            self,
-            model_id: str,
-            agent_names: list[str],
-            *,
-            model_provider_type: str = "openai",
-        ) -> None:
-            del model_id, model_provider_type
-            self.agent_names = agent_names
-
-        def plan(self, message: str) -> list[TaskDelegated]:
-            return [
-                TaskDelegated(
-                    source="planner",
-                    target_agent=self.agent_names[0],
-                    task_description=f"task:{message}",
-                )
-            ]
-
-        def summarize(self, completed_tasks: str) -> str:
-            return f"summary:{completed_tasks}"
-
-        def close(self) -> None:
-            return None
-
-    class FakeSearchAgent:
-        def __init__(
-            self,
-            model_id: str,
-            search_provider,
-            *,
-            knowledge_base=None,
-            model_provider_type: str = "openai",
-        ) -> None:
-            del model_id, knowledge_base, model_provider_type
-            self.search_provider = search_provider
-
-        def search(self, message: str) -> str:
-            return f"worker:{message}:{self.search_provider.api_key}"
-
-        def close(self) -> None:
-            return None
-
-    monkeypatch.setattr("agentic_graph.runtime.OpenAIProvider.configure", lambda **_: None)
-    monkeypatch.setattr("agentic_graph.runtime.TavilySearchProvider", FakeProvider)
-    monkeypatch.setattr("agentic_graph.runtime.PlannerAgent", FakePlannerAgent)
-    monkeypatch.setattr("agentic_graph.runtime.SearchAgent", FakeSearchAgent)
-    monkeypatch.setenv("TAVILY_API_KEY", "env-token")
-
-    result = run_graph_runtime(graph, "research topic")
+    result = run_graph_runtime(graph, "latest updates")
 
     assert result.status == "ok"
-    assert result.entry_agent == "planner"
-    assert "summary:" in result.response
-    assert "worker:task:research topic:env-token" in result.response
-    assert any("planner -> searcher" in step for step in result.steps)
+    assert "search:latest updates:env-valyu:shared-model:openai" in result.response
+    assert "env-tavily" not in result.response
+    assert "env-notes" not in result.response
+    assert any("entry -> search_valyu: dispatched" in step for step in result.steps)
 
 
 def test_serialization_normalizes_legacy_node_types() -> None:
@@ -507,6 +495,6 @@ def test_public_imports_still_work() -> None:
     assert personal_assistant.ui.app is not None
 
 
-def test_run_graph_runtime_rejects_none_message_with_clear_error() -> None:
+def test_run_graph_runtime_rejects_none_message_with_clear_error(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="non-empty input message"):
-        run_graph_runtime(_valid_graph(), None)
+        run_graph_runtime(_three_search_graph(str(tmp_path / "noop.md")), None)

@@ -69,6 +69,7 @@ class ChunkAssembly:
         return ConversationRecordRow(
             message_id=row.message_id,
             runtime_id=row.runtime_id,
+            session_id=row.session_id,
             turn_id=row.turn_id,
             reply_to_message_id=row.reply_to_message_id,
             kind=self.logical_kind,
@@ -88,6 +89,12 @@ class ChunkAssembly:
             status=row.status,
             content_sha256=row.content_sha256 or hash_text(text),
             trace_id=row.trace_id,
+            span_id=row.span_id,
+            parent_span_id=row.parent_span_id,
+            span_name=row.span_name,
+            span_type=row.span_type,
+            attempt_no=row.attempt_no,
+            loop_iteration=row.loop_iteration,
             created_at_ns=row.created_at_ns,
         )
 
@@ -96,6 +103,7 @@ class SQLiteMessageStore:
     _MESSAGE_STREAM_COLUMNS: dict[str, str] = {
         "event_id": "TEXT",
         "runtime_id": "TEXT NOT NULL",
+        "session_id": "TEXT",
         "turn_id": "TEXT NOT NULL",
         "message_id": "TEXT NOT NULL",
         "reply_to_message_id": "TEXT",
@@ -119,11 +127,18 @@ class SQLiteMessageStore:
         "status": "TEXT",
         "content_sha256": "TEXT",
         "trace_id": "TEXT",
+        "span_id": "TEXT",
+        "parent_span_id": "TEXT",
+        "span_name": "TEXT",
+        "span_type": "TEXT",
+        "attempt_no": "INTEGER",
+        "loop_iteration": "INTEGER",
         "created_at_ns": "INTEGER NOT NULL",
     }
     _CONVERSATION_RECORD_COLUMNS: dict[str, str] = {
         "message_id": "TEXT PRIMARY KEY",
         "runtime_id": "TEXT NOT NULL",
+        "session_id": "TEXT",
         "turn_id": "TEXT NOT NULL",
         "reply_to_message_id": "TEXT",
         "kind": "TEXT NOT NULL",
@@ -143,6 +158,12 @@ class SQLiteMessageStore:
         "status": "TEXT",
         "content_sha256": "TEXT",
         "trace_id": "TEXT",
+        "span_id": "TEXT",
+        "parent_span_id": "TEXT",
+        "span_name": "TEXT",
+        "span_type": "TEXT",
+        "attempt_no": "INTEGER",
+        "loop_iteration": "INTEGER",
         "created_at_ns": "INTEGER NOT NULL",
     }
     _SCHEMA = """
@@ -150,6 +171,7 @@ class SQLiteMessageStore:
         id INTEGER PRIMARY KEY,
         event_id TEXT,
         runtime_id TEXT NOT NULL,
+        session_id TEXT,
         turn_id TEXT NOT NULL,
         message_id TEXT NOT NULL,
         reply_to_message_id TEXT,
@@ -173,12 +195,19 @@ class SQLiteMessageStore:
         status TEXT,
         content_sha256 TEXT,
         trace_id TEXT,
+        span_id TEXT,
+        parent_span_id TEXT,
+        span_name TEXT,
+        span_type TEXT,
+        attempt_no INTEGER,
+        loop_iteration INTEGER,
         created_at_ns INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS conversation_records (
         message_id TEXT PRIMARY KEY,
         runtime_id TEXT NOT NULL,
+        session_id TEXT,
         turn_id TEXT NOT NULL,
         reply_to_message_id TEXT,
         kind TEXT NOT NULL,
@@ -198,6 +227,12 @@ class SQLiteMessageStore:
         status TEXT,
         content_sha256 TEXT,
         trace_id TEXT,
+        span_id TEXT,
+        parent_span_id TEXT,
+        span_name TEXT,
+        span_type TEXT,
+        attempt_no INTEGER,
+        loop_iteration INTEGER,
         created_at_ns INTEGER NOT NULL
     );
 
@@ -221,6 +256,15 @@ class SQLiteMessageStore:
 
     CREATE INDEX IF NOT EXISTS idx_message_stream_trace
     ON message_stream(trace_id);
+
+    CREATE INDEX IF NOT EXISTS idx_message_stream_session
+    ON message_stream(session_id);
+
+    CREATE INDEX IF NOT EXISTS idx_message_stream_span
+    ON message_stream(span_id);
+
+    CREATE INDEX IF NOT EXISTS idx_message_stream_trace_span
+    ON message_stream(trace_id, span_id);
     """
 
     def __init__(
@@ -395,6 +439,7 @@ class SQLiteMessageStore:
             INSERT INTO message_stream (
                 event_id,
                 runtime_id,
+                session_id,
                 turn_id,
                 message_id,
                 reply_to_message_id,
@@ -418,13 +463,20 @@ class SQLiteMessageStore:
                 status,
                 content_sha256,
                 trace_id,
+                span_id,
+                parent_span_id,
+                span_name,
+                span_type,
+                attempt_no,
+                loop_iteration,
                 created_at_ns
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     row.event_id,
                     row.runtime_id,
+                    row.session_id,
                     row.turn_id,
                     row.message_id,
                     row.reply_to_message_id,
@@ -448,6 +500,12 @@ class SQLiteMessageStore:
                     row.status,
                     row.content_sha256,
                     row.trace_id,
+                    row.span_id,
+                    row.parent_span_id,
+                    row.span_name,
+                    row.span_type,
+                    row.attempt_no,
+                    row.loop_iteration,
                     row.created_at_ns,
                 )
                 for row in rows
@@ -464,6 +522,7 @@ class SQLiteMessageStore:
                 INSERT OR IGNORE INTO conversation_records (
                     message_id,
                     runtime_id,
+                    session_id,
                     turn_id,
                     reply_to_message_id,
                     kind,
@@ -483,13 +542,20 @@ class SQLiteMessageStore:
                     status,
                     content_sha256,
                     trace_id,
+                    span_id,
+                    parent_span_id,
+                    span_name,
+                    span_type,
+                    attempt_no,
+                    loop_iteration,
                     created_at_ns
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
                         row.message_id,
                         row.runtime_id,
+                        row.session_id,
                         row.turn_id,
                         row.reply_to_message_id,
                         row.kind,
@@ -509,6 +575,12 @@ class SQLiteMessageStore:
                         row.status,
                         row.content_sha256,
                         row.trace_id,
+                        row.span_id,
+                        row.parent_span_id,
+                        row.span_name,
+                        row.span_type,
+                        row.attempt_no,
+                        row.loop_iteration,
                         row.created_at_ns,
                     )
                     for row in conversation_rows

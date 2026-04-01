@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING
 from structlog import get_logger
 
 from agentic_runtime.distributed.contracts import AgentHeartbeat, AgentRegistration
-from agentic_runtime.messaging.messages import AssistantMessage, Message, TurnCompleted
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    Message,
+    RecordedMessageMetadata,
+    TurnCompleted,
+)
 
 if TYPE_CHECKING:
     from agentic_runtime.distributed.discovery import AgenticServiceDiscovery
@@ -33,6 +39,7 @@ class DistributedService:
         role: str = "worker",
         heartbeat_seconds: float = 5.0,
         close_hook: CloseHook | None = None,
+        min_idle_ms: int = 5_000,
     ) -> None:
         self._agent_name = agent_name
         self._capabilities = capabilities
@@ -43,6 +50,7 @@ class DistributedService:
         self._role = role
         self._heartbeat_seconds = heartbeat_seconds
         self._close_hook = close_hook
+        self._min_idle_ms = min_idle_ms
         self._group = agent_name
         self._consumer_name = f"{socket.gethostname()}-{os.getpid()}"
         self._stop_event = threading.Event()
@@ -67,6 +75,8 @@ class DistributedService:
         )
         self._heartbeat_thread.start()
 
+        self._drain_pending()
+
         while not self._stop_event.is_set():
             records = self._transport.consume_target(
                 self._agent_name,
@@ -87,6 +97,26 @@ class DistributedService:
             self._heartbeat_thread.join(timeout=1.0)
         if self._close_hook is not None:
             self._close_hook()
+
+    def _drain_pending(self) -> None:
+        """Re-process messages left in the PEL from a prior crash."""
+        while not self._stop_event.is_set():
+            records = self._transport.autoclaim_pending(
+                self._agent_name,
+                group=self._group,
+                consumer=self._consumer_name,
+                min_idle_ms=self._min_idle_ms,
+                count=10,
+            )
+            if not records:
+                break
+            logger.info(
+                "drain_pending_messages",
+                agent_name=self._agent_name,
+                count=len(records),
+            )
+            for record in records:
+                self._handle_record(record.stream, record.entry_id, record.record)
 
     def _heartbeat_loop(self) -> None:
         while not self._stop_event.wait(self._heartbeat_seconds):
@@ -119,35 +149,46 @@ class DistributedService:
         reply_target = self._resolve_reply_target(message)
         return (
             AssistantMessage(
-                runtime_id=message.runtime_id,
-                turn_id=message.turn_id,
-                domain=message.domain or "lab6",
-                source=self._agent_name,
-                target=reply_target,
-                text=f"{self._agent_name} failed: {error}",
-                status="error",
+                data=ConversationData(
+                    role="assistant",
+                    text=f"{self._agent_name} failed: {error}",
+                ),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain or "lab6",
+                    source=self._agent_name,
+                    target=reply_target,
+                    status="error",
+                    trace=message.metadata.trace,
+                ),
             ),
             TurnCompleted(
-                runtime_id=message.runtime_id,
-                turn_id=message.turn_id,
-                domain=message.domain or "lab6",
-                source=self._agent_name,
-                target=reply_target,
-                status="error",
-                payload={
+                data={
                     "workflow": self._agent_name,
                     "error_type": type(error).__name__,
                     "error_message": str(error),
                 },
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain or "lab6",
+                    source=self._agent_name,
+                    target=reply_target,
+                    status="error",
+                    trace=message.metadata.trace,
+                ),
             ),
         )
 
     @staticmethod
     def _resolve_reply_target(message: Message) -> str:
-        payload = message.payload if isinstance(message.payload, dict) else {}
+        payload = message.data if isinstance(message.data, dict) else {}
         reply_target = payload.get("reply_target")
         if isinstance(reply_target, str) and reply_target:
             return reply_target
-        if message.source:
-            return message.source
+        if message.metadata.source:
+            return message.metadata.source
         return "chat"

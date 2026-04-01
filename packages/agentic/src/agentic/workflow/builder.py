@@ -47,9 +47,9 @@ class ConfiguredWorkflow(AgenticWorkflow):
 
     def handle(self, message: Message) -> WorkflowExecution | str:
         if isinstance(message, UserCommand):
-            if message.name == "start" and self._on_start is not None:
+            if message.type == "start" and self._on_start is not None:
                 return self._on_start()
-            if message.name == "reset":
+            if message.type == "reset":
                 if self._on_reset is not None:
                     self._on_reset()
                 return ""

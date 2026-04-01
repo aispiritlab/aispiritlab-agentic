@@ -6,10 +6,10 @@ from agentic.core_agent import CoreAgentic
 from agentic.message import ToolMessage
 from agentic.metadata import Description
 from agentic.models import ModelConfig
-from agentic.prompts import QwenPromptBuilder
 from agentic.providers.provider import ModelProviderType
 from agentic.tools import Toolset, Toolsets
 
+from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder
 from agentic.specialized_agents.events import TaskDelegated
 
 _PLANNER_SYSTEM_PROMPT_TEMPLATE = """You are a planner. Break the user request into steps and delegate each step to an agent.
@@ -79,7 +79,10 @@ class PlannerAgent(CoreAgentic):
 
         super().__init__(
             model_id=model_id,
-            prompt_builder=QwenPromptBuilder(system_prompt=system_prompt),
+            prompt_builder=build_specialized_prompt_builder(
+                system_prompt=system_prompt,
+                model_provider_type=model_provider_type,
+            ),
             toolsets=Toolsets([Toolset([delegate_task])]),
             config=config or ModelConfig(max_tokens=256, generation_mode="nothinking"),
             model_provider_type=model_provider_type,
@@ -100,6 +103,7 @@ class PlannerAgent(CoreAgentic):
         self._agent.clear_history()
 
         response = self.respond(message)
+        response.result.loop_iteration = 0
         prev_count = len(self._pending_tasks)
 
         turn = 0
@@ -124,6 +128,7 @@ class PlannerAgent(CoreAgentic):
                 )
             tool_msg = ToolMessage("\n\n".join(parts))
             response = self.respond(tool_msg)
+            response.result.loop_iteration = turn
 
         return list(self._pending_tasks)
 

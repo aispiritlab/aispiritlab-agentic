@@ -5,12 +5,24 @@ import importlib
 from evaluation.contracts import EvaluationDefinition
 
 
+_DEFINITION_ALIASES = {
+    "agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION": (
+        "personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION"
+    ),
+}
+
+
+def normalize_definition_spec(spec: str) -> str:
+    return _DEFINITION_ALIASES.get(spec, spec)
+
+
 def load_evaluation_definition(spec: str) -> EvaluationDefinition:
+    spec = normalize_definition_spec(spec)
     module_name, separator, attribute_name = spec.partition(":")
     if not separator or not module_name.strip() or not attribute_name.strip():
         raise ValueError(
             "Definition spec must use the `module:attribute` format, "
-            "for example `agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION`."
+            "for example `personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION`."
         )
 
     module = importlib.import_module(module_name.strip())

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-BlockKind = Literal["agent", "integration", "structural_output"]
+BlockKind = Literal["agent", "integration", "structural_output", "provider"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +101,20 @@ WORKSHOP_AGENT_BLOCKS: tuple[BlockSpec, ...] = (
     ),
 )
 
+PROVIDER_BLOCKS: tuple[BlockSpec, ...] = (
+    BlockSpec(
+        agent_name="model_provider",
+        display_name="Model Provider",
+        description="Shared model provider binding reused by connected agent blocks.",
+        capabilities=("model", "provider", "shared"),
+        block_kind="provider",
+        config_defaults=(
+            ("provider_type", "openai"),
+            ("model_id", "qwen3.5-4b"),
+        ),
+    ),
+)
+
 INTEGRATION_BLOCKS: tuple[BlockSpec, ...] = (
     BlockSpec(
         agent_name="tavily_search",
@@ -142,6 +156,7 @@ STRUCTURAL_OUTPUT_BLOCKS: tuple[BlockSpec, ...] = (
 KNOWN_BLOCKS: tuple[BlockSpec, ...] = (
     PERSONAL_ASSISTANT_BLOCKS
     + WORKSHOP_AGENT_BLOCKS
+    + PROVIDER_BLOCKS
     + INTEGRATION_BLOCKS
     + STRUCTURAL_OUTPUT_BLOCKS
 )

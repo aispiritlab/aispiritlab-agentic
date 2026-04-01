@@ -10,14 +10,76 @@ from typing import Callable, Sequence
 from structlog import get_logger
 
 from agentic.prompts import PromptTemplate
-from agentic.tools import Toolsets
+from agentic.tools import Command, Toolsets
 
-from agentic.workflow.messages import Message, UserMessage
+from agentic.workflow.messages import ConversationData, Message, RecordedMessageMetadata, UserMessage
 from agentic_runtime.reactor import Decider, LLMResponse
 
 from personal_assistant.messaging.events import CreatedNote, NoteUpdated
 
 logger = get_logger(__name__)
+
+
+def build_note_events(
+    command: Command,
+    *,
+    resolve_note_path: Callable[[str], str],
+    agent_name: str,
+    metadata: RecordedMessageMetadata,
+) -> tuple[Message, ...]:
+    """Build domain events from a parsed manage_notes tool command."""
+    from personal_assistant.agents.manage_notes.commands import AddNoteCommand, EditNoteCommand
+
+    match command:
+        case AddNoteCommand(note_name=name, note=content):
+            logger.info("created_note", note_name=name)
+            return (
+                CreatedNote(
+                    note_name=name,
+                    note_content=content,
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=metadata.runtime_id,
+                        session_id=metadata.session_id,
+                        turn_id=metadata.turn_id,
+                        source=agent_name,
+                        domain="manage_notes",
+                        target="organizer",
+                        trace=metadata.trace,
+                    ),
+                ),
+                NoteUpdated(
+                    note_name=name,
+                    note_path=resolve_note_path(name),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=metadata.runtime_id,
+                        session_id=metadata.session_id,
+                        turn_id=metadata.turn_id,
+                        source=agent_name,
+                        domain="manage_notes",
+                        target="rag",
+                        trace=metadata.trace,
+                    ),
+                ),
+            )
+        case EditNoteCommand(note_name=name):
+            logger.info("updated_note", note_name=name)
+            return (
+                NoteUpdated(
+                    note_name=name,
+                    note_path=resolve_note_path(name),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=metadata.runtime_id,
+                        session_id=metadata.session_id,
+                        turn_id=metadata.turn_id,
+                        source=agent_name,
+                        domain="manage_notes",
+                        target="rag",
+                        trace=metadata.trace,
+                    ),
+                ),
+            )
+        case _:
+            return ()
 
 
 def passthrough_decider(msg: Message) -> Sequence[Message]:
@@ -40,7 +102,6 @@ def make_manage_notes_decider(
     UserMessage → [UserMessage] (pass to LLM)
     LLMResponse with tool_calls → [CreatedNote, NoteUpdated, ...] (domain events)
     """
-    from personal_assistant.agents.manage_notes.commands import AddNoteCommand, EditNoteCommand
 
     def decider(msg: Message) -> Sequence[Message]:
         if isinstance(msg, UserMessage):
@@ -50,40 +111,15 @@ def make_manage_notes_decider(
             tool_call = msg.tool_calls[0]
             command = toolsets.parse_tool(tool_call)
             if command is None:
+                logger.warning("failed_to_parse_tool_call", tool_call=tool_call)
                 return []
 
-            match command:
-                case AddNoteCommand(note_name=name, note=content):
-                    logger.info("created_note", note_name=name)
-                    return [
-                        CreatedNote(
-                            runtime_id=msg.runtime_id,
-                            turn_id=msg.turn_id,
-                            source=agent_name,
-                            note_name=name,
-                            note_content=content,
-                        ),
-                        NoteUpdated(
-                            runtime_id=msg.runtime_id,
-                            turn_id=msg.turn_id,
-                            source=agent_name,
-                            note_name=name,
-                            note_path=resolve_note_path(name),
-                        ),
-                    ]
-                case EditNoteCommand(note_name=name):
-                    logger.info("updated_note", note_name=name)
-                    return [
-                        NoteUpdated(
-                            runtime_id=msg.runtime_id,
-                            turn_id=msg.turn_id,
-                            source=agent_name,
-                            note_name=name,
-                            note_path=resolve_note_path(name),
-                        ),
-                    ]
-                case _:
-                    return []
+            return list(build_note_events(
+                command,
+                resolve_note_path=resolve_note_path,
+                agent_name=agent_name,
+                metadata=msg.metadata,
+            ))
 
         return []
 
@@ -112,11 +148,15 @@ def make_organizer_decider() -> Decider:
             )
             return [
                 UserMessage(
-                    text=payload,
-                    domain=msg.domain,
-                    runtime_id=msg.runtime_id,
-                    turn_id=msg.turn_id,
-                    source=msg.source,
+                    data=ConversationData(role="user", text=payload),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=msg.metadata.runtime_id,
+                        session_id=msg.metadata.session_id,
+                        turn_id=msg.metadata.turn_id,
+                        domain=msg.metadata.domain,
+                        source=msg.metadata.source,
+                        trace=msg.metadata.trace,
+                    ),
                 )
             ]
 

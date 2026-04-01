@@ -6,6 +6,7 @@ from agentic.observability import (
     MlflowSpanHandle,
     NoopLLMTracer,
     NoopSpanHandle,
+    TraceSnapshot,
     TracingContext,
 )
 
@@ -16,6 +17,10 @@ class _FakeSpan:
         self.outputs: dict | None = None
         self.attributes: dict = {}
         self.trace_id: str = "fake-trace-id"
+        self.span_id: str = "fake-span-id"
+        self.parent_id: str | None = "fake-parent-span-id"
+        self.name: str = "fake-span"
+        self.span_type: str = "CHAIN"
 
     def set_inputs(self, inputs: dict) -> None:
         self.inputs = inputs
@@ -354,6 +359,20 @@ def test_get_trace_url_returns_none_without_tracking_uri() -> None:
 def test_noop_get_trace_url_returns_none() -> None:
     tracer = NoopLLMTracer()
     assert tracer.get_trace_url() is None
+
+
+def test_current_trace_returns_snapshot() -> None:
+    tracer, fake = _make_tracer()
+    fake._active_span = _FakeSpan()
+
+    assert tracer.current_trace == TraceSnapshot(
+        session_id="",
+        trace_id="fake-trace-id",
+        span_id="fake-span-id",
+        parent_span_id="fake-parent-span-id",
+        span_name="fake-span",
+        span_type="CHAIN",
+    )
 
 
 # ---------------------------------------------------------------------------

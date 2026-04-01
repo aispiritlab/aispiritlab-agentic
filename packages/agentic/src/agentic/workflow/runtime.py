@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Callable
 import uuid
 
@@ -9,7 +9,7 @@ from agentic.observability import LLMTracer, NoopLLMTracer
 
 from agentic.workflow._workflow import AgenticWorkflow
 from agentic.workflow.message_bus import InMemoryMessageBus
-from agentic.workflow.messages import Message, UserCommand, UserMessage
+from agentic.workflow.messages import ConversationData, Message, RecordedMessageMetadata, UserCommand, UserMessage
 from agentic.workflow.output_handler import WorkflowOutputHandler
 from agentic.workflow.turn_execution import TurnExecutor, TurnPlan, coerce_reply_text
 
@@ -103,12 +103,15 @@ class WorkflowRuntime:
         output_agent_name: str | None = None,
     ) -> str:
         workflow = self.workflows[workflow_name]
-        message = replace(
-            incoming,
+        message = incoming.with_metadata(
             domain=lifecycle_domain or workflow_name,
-            target=lifecycle_target if lifecycle_target is not None else (incoming.target or workflow_name),
-            runtime_id=incoming.runtime_id or self._new_id(),
-            turn_id=incoming.turn_id or self._new_id(),
+            target=(
+                lifecycle_target
+                if lifecycle_target is not None
+                else (incoming.metadata.target or workflow_name)
+            ),
+            runtime_id=incoming.metadata.runtime_id or self._new_id(),
+            turn_id=incoming.metadata.turn_id or self._new_id(),
         )
         return self.execute_turn(
             TurnPlan(
@@ -116,7 +119,11 @@ class WorkflowRuntime:
                 handler=workflow.handle,
                 trace_name=trace_name or workflow_name,
                 lifecycle_domain=lifecycle_domain or workflow_name,
-                lifecycle_target=lifecycle_target if lifecycle_target is not None else message.target,
+                lifecycle_target=(
+                    lifecycle_target
+                    if lifecycle_target is not None
+                    else message.metadata.target
+                ),
                 lifecycle_workflow_name=workflow_name,
                 output_agent_name=output_agent_name or workflow_name,
                 selected_workflow=selected_workflow,
@@ -126,13 +133,13 @@ class WorkflowRuntime:
 
     def handle(self, message: Message) -> str:
         if isinstance(message, UserMessage):
-            workflow_name = message.target or message.domain
+            workflow_name = message.metadata.target or message.metadata.domain
             if workflow_name in self.workflows:
                 return self.execute_workflow(workflow_name, message)
 
         if isinstance(message, UserCommand):
             self.bus.publish(message)
-            workflow_name = message.target or message.domain
+            workflow_name = message.metadata.target or message.metadata.domain
             if workflow_name in self.workflows:
                 return coerce_reply_text(self.workflows[workflow_name].handle(message))
 
@@ -151,12 +158,14 @@ class WorkflowRuntime:
         return self.execute_workflow(
             workflow_name,
             UserMessage(
-                runtime_id=runtime_id or self._new_id(),
-                turn_id=turn_id or self._new_id(),
-                domain=workflow_name,
-                source=source,
-                target=workflow_name,
-                text=text,
+                data=ConversationData(role="user", text=text),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=runtime_id or self._new_id(),
+                    turn_id=turn_id or self._new_id(),
+                    domain=workflow_name,
+                    source=source,
+                    target=workflow_name,
+                ),
             ),
         )
 

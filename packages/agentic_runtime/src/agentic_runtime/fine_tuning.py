@@ -7,6 +7,8 @@ from typing import Any
 
 import orjson
 
+from agentic.tools._toolsets import TOOL_ERROR_PREFIXES
+
 
 def _connect(path: str | Path) -> sqlite3.Connection:
     return sqlite3.connect(Path(path).expanduser())
@@ -51,9 +53,14 @@ def _rows_to_messages(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
     return messages
 
 
+def _tool_error_like_clauses() -> str:
+    return " OR ".join(f"text LIKE '{prefix}%'" for prefix in TOOL_ERROR_PREFIXES)
+
+
 def _successful_turns(connection: sqlite3.Connection, runtime_id: str | None) -> list[sqlite3.Row]:
-    query = """
-        SELECT turn_id, runtime_id, domain, created_at_ns
+    error_filter = _tool_error_like_clauses()
+    query = f"""
+        SELECT turn_id, runtime_id, session_id, domain, trace_id, created_at_ns
         FROM message_stream
         WHERE kind = 'turn_completed'
           AND status = 'success'
@@ -62,7 +69,7 @@ def _successful_turns(connection: sqlite3.Connection, runtime_id: str | None) ->
     if runtime_id is not None:
         query += " AND runtime_id = ?"
         parameters.append(runtime_id)
-    query += """
+    query += f"""
         AND turn_id NOT IN (
             SELECT DISTINCT ms.turn_id
             FROM message_stream ms
@@ -75,10 +82,7 @@ def _successful_turns(connection: sqlite3.Connection, runtime_id: str | None) ->
             SELECT DISTINCT turn_id
             FROM conversation_records
             WHERE role = 'tool'
-              AND (
-                    text LIKE 'Błąd:%'
-                 OR text LIKE 'Error:%'
-              )
+              AND ({error_filter})
         )
         ORDER BY created_at_ns
     """
@@ -164,10 +168,49 @@ def export_agent_fine_tuning_rows(
                 "tools": tools,
                 "metadata": {
                     "runtime_id": turn["runtime_id"],
+                    "session_id": turn["session_id"] or turn["runtime_id"],
                     "turn_id": turn_id,
                     "domain": domain,
                     "prompt_name": prompt_row["prompt_name"] if prompt_row is not None else None,
                     "prompt_hash": prompt_row["prompt_hash"] if prompt_row is not None else None,
+                    "trace_id": next(
+                        (
+                            row["trace_id"]
+                            for row in body_rows
+                            if row["trace_id"]
+                        ),
+                        turn["trace_id"] if "trace_id" in turn.keys() else None,
+                    ),
+                    "agent_run_id": next(
+                        (
+                            row["agent_run_id"]
+                            for row in body_rows
+                            if row["agent_run_id"]
+                        ),
+                        None,
+                    ),
+                    "final_message_id": next(
+                        (
+                            row["message_id"]
+                            for row in reversed(body_rows)
+                            if row["role"] == "assistant"
+                        ),
+                        None,
+                    ),
+                    "retry_count": max(
+                        (
+                            max(int(row["attempt_no"] or 0) - 1, 0)
+                            for row in body_rows
+                        ),
+                        default=0,
+                    ),
+                    "loop_iteration_count": max(
+                        (
+                            int(row["loop_iteration"] or 0)
+                            for row in body_rows
+                        ),
+                        default=0,
+                    ),
                 },
             }
         )
@@ -186,7 +229,7 @@ def export_router_fine_tuning_rows(
         connection.row_factory = sqlite3.Row
         routing_events = connection.execute(
             """
-            SELECT turn_id, runtime_id, payload_json
+            SELECT turn_id, runtime_id, session_id, trace_id, payload_json
             FROM message_stream
             WHERE kind = 'event'
               AND name = 'workflow_selected'
@@ -235,11 +278,13 @@ def export_router_fine_tuning_rows(
                 ],
                 "metadata": {
                     "runtime_id": event["runtime_id"],
+                    "session_id": event["session_id"] or event["runtime_id"],
                     "turn_id": event["turn_id"],
                     "domain": "routing",
                     "expected_workflow": workflow,
                     "prompt_name": router_prompt["prompt_name"] if router_prompt is not None else None,
                     "prompt_hash": router_prompt["prompt_hash"] if router_prompt is not None else None,
+                    "trace_id": event["trace_id"] if "trace_id" in event.keys() else None,
                 },
             }
         )

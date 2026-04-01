@@ -56,11 +56,11 @@ class RedisStreamsTransport:
         )
 
     def publish_message(self, message: Message) -> str:
-        if not message.target:
+        if not message.metadata.target:
             raise ValueError("Distributed messages must have a target")
 
         return self._client.xadd(
-            self.message_stream(message.target),
+            self.message_stream(message.metadata.target),
             {"payload": serialize_record(message)},
         )
 
@@ -115,6 +115,49 @@ class RedisStreamsTransport:
             count=count,
         )
         return self._deserialize_records(response)
+
+    def autoclaim_pending(
+        self,
+        target: str,
+        *,
+        group: str,
+        consumer: str,
+        min_idle_ms: int = 5_000,
+        count: int = 10,
+    ) -> list[ConsumedRecord]:
+        """Claim pending messages from any idle consumer in the group.
+
+        Uses XAUTOCLAIM to transfer ownership of messages that have been
+        idle for at least *min_idle_ms* to the specified *consumer*.
+        After a crash the new process has a different PID (consumer name),
+        so ``xreadgroup("0")`` would return nothing — ``xautoclaim`` steals
+        messages from *any* idle consumer, solving the PID-change problem.
+        """
+        self.ensure_consumer_group(target, group)
+        _next_id, entries, _deleted = self._client.xautoclaim(
+            name=self.message_stream(target),
+            groupname=group,
+            consumername=consumer,
+            min_idle_time=min_idle_ms,
+            start_id="0-0",
+            count=count,
+        )
+        stream_name = self.message_stream(target)
+        records: list[ConsumedRecord] = []
+        for entry_id, payload in entries:
+            if not isinstance(payload, dict):
+                continue
+            serialized = payload.get("payload")
+            if not isinstance(serialized, str):
+                continue
+            records.append(
+                ConsumedRecord(
+                    stream=stream_name,
+                    entry_id=entry_id,
+                    record=deserialize_record(serialized),
+                )
+            )
+        return records
 
     def ack(self, stream: str, group: str, entry_id: str) -> int:
         return int(self._client.xack(stream, group, entry_id))

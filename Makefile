@@ -58,6 +58,10 @@ test-e2e: ## Run workflow smoke tests (requires live model)
 test-e2e-live: ## Run runtime-first live end-to-end tests
 	RUN_AGENT_E2E_LIVE=1 uv run pytest packages/personal_assistant/tests/e2e_live/ -m agent_e2e_live -v
 
+.PHONY: test-resilience
+test-resilience: ## Run distributed resilience tests (requires LLM server, Redis optional)
+	RUN_DISTRIBUTED_RESILIENCE=1 uv run pytest packages/agentic_runtime/tests/e2e_resilience/ -m distributed_resilience -v
+
 #################################################################################
 # Applications                                                                  #
 #################################################################################

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     # MLflow registry URI for prompt management
     mlflow_registry_uri: str = "http://127.0.0.1:5001"
+    mlflow_experiment_name: str = "AI Spirit"
+    mlflow_evaluation_experiment_name: str = "AI Spirit/evaluation"
 
     debug: bool = False
 

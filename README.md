@@ -28,11 +28,20 @@ Run the chat interface:
 2. Terminal 2: `make registry`
 3. Terminal 3: `make chat`
 
+The Personal Assistant UI includes an **Agent Builder** tab powered by `agentic-graph`.
+
+Run the standalone Agent Builder:
+
+```bash
+uv run agentic-graph
+```
+
 ## Architecture
 
 ```
 packages/
   agentic/             Core agent SDK (Agent, CoreAgentic, tools, prompts, models)
+  agentic_graph/       Visual agent builder, validation, runtime sandbox, code generation
   agentic_runtime/     Generic agent orchestration framework (runtime, messaging, distributed)
   chat/                Reusable Gradio UI building blocks
   personal_assistant/  Concrete PA application (5 agents, Gradio UI, domain events)
@@ -50,12 +59,18 @@ packages/
 ```
 personal_assistant --> agentic_runtime (framework)
                    --> agentic (SDK)
+                   --> agentic_graph (visual builder tab)
                    --> chat (UI library)
                    --> registry, evaluation, knowledge_base
 
 chat (UI library)  --> gradio
 
 agentic_runtime    --> agentic (SDK)
+
+agentic_graph      --> agentic_runtime (runtime)
+                   --> agentic (SDK)
+                   --> chat (UI library)
+                   --> knowledge_base
 
 cli                --> personal_assistant
 ```
@@ -66,9 +81,11 @@ cli                --> personal_assistant
 
 **agentic_runtime** -- Generic orchestration framework. `AgenticRuntime` accepts workflows, a router, and output handlers as constructor parameters. Also provides messaging infrastructure, distributed runtime (Redis Streams), storage, tracing, and turn execution. No application-specific code.
 
+**agentic_graph** -- Visual agent composition package. Provides a PixiJS-backed graph canvas in Gradio, graph validation, summary/code generation, and a standalone `agentic-graph` app for prototyping workflows.
+
 **chat** -- Reusable Gradio UI building blocks: `add_message()`, `append_voice_response()`, `ChatAppConfig`, `install_shutdown_handlers()`, `launch()`. Any agent application can compose its UI from these components.
 
-**personal_assistant** -- The concrete application. Contains 5 specialized agents (manage_notes, organizer, discovery_notes, sage, personalize), a router, domain events, output handlers, and the full Gradio UI. Entry point: `personal-assistant`.
+**personal_assistant** -- The concrete application. Contains 5 specialized agents (manage_notes, organizer, discovery_notes, sage, personalize), a router, domain events, output handlers, the full Gradio UI, and the embedded Agent Builder tab. Entry point: `personal-assistant`.
 
 ## Personal Assistant Agents
 
@@ -109,6 +126,7 @@ make test-e2e-live    # Full end-to-end tests (requires live model)
 
 ```bash
 make chat             # Gradio chat interface
+uv run agentic-graph  # Standalone Agent Builder on port 7861
 make cli              # Interactive CLI
 make registry         # Prompt registry
 make generate-kb      # Generate knowledge base

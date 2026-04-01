@@ -5,7 +5,12 @@ from types import SimpleNamespace
 from agentic_runtime.distributed.discovery import AgenticServiceDiscovery
 from agentic_runtime.distributed.registry import AgentSnapshot
 from agentic_runtime.distributed.runtime import DistributedAgenticRuntime
-from agentic_runtime.messaging.messages import AssistantMessage, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    RecordedMessageMetadata,
+    UserMessage,
+)
 
 
 class _FakeTransport:
@@ -27,12 +32,14 @@ class _FakeTransport:
                 SimpleNamespace(
                     entry_id="1-0",
                     record=AssistantMessage(
-                        runtime_id=message.runtime_id,
-                        turn_id=message.turn_id,
-                        domain=message.domain,
-                        source="summary",
-                        target="chat",
-                        text="distributed answer",
+                        data=ConversationData(role="assistant", text="distributed answer"),
+                        metadata=RecordedMessageMetadata(
+                            runtime_id=message.metadata.runtime_id,
+                            turn_id=message.metadata.turn_id,
+                            domain=message.metadata.domain,
+                            source="summary",
+                            target="chat",
+                        ),
                     ),
                 )
             ]
@@ -102,8 +109,8 @@ def test_run_delegates_to_client_and_returns_response() -> None:
 
     assert reply == "distributed answer"
     assert len(transport.published_messages) == 1
-    assert transport.published_messages[0].target == "planner"
-    assert transport.published_messages[0].text == "What is Redis?"
+    assert transport.published_messages[0].metadata.target == "planner"
+    assert transport.published_messages[0].data.text == "What is Redis?"
 
 
 def test_start_returns_greeting() -> None:

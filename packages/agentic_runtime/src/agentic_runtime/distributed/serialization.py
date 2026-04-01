@@ -8,12 +8,15 @@ from agentic_runtime.distributed.contracts import AgentHeartbeat, AgentRegistrat
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
     Command,
+    ConversationData,
     Event,
     Message,
+    MessageMetadata,
     MessageChunk,
     MessageCompleted,
     MessageStarted,
     PromptSnapshot,
+    RecordedMessageMetadata,
     ToolCallEvent,
     ToolResultMessage,
     TurnCompleted,
@@ -21,6 +24,7 @@ from agentic_runtime.messaging.messages import (
     UserCommand,
     UserMessage,
 )
+from agentic.observability import TraceSnapshot
 
 _BASE_SERIALIZABLE_TYPES = (
     AgentHeartbeat,
@@ -68,4 +72,21 @@ def deserialize_record(value: str | bytes) -> Any:
         raise KeyError("Serialized record is missing __type__")
 
     record_type = _TYPE_MAP[record_type_name]
+    if isinstance(payload.get("metadata"), dict):
+        metadata_payload = dict(payload["metadata"])
+        trace_payload = metadata_payload.get("trace")
+        if isinstance(trace_payload, dict):
+            metadata_payload["trace"] = TraceSnapshot(**trace_payload)
+        metadata_type = MessageMetadata
+        if any(key in metadata_payload for key in ("event_id", "message_id", "sequence_no", "content_sha256")):
+            metadata_type = RecordedMessageMetadata
+        payload["metadata"] = metadata_type(**metadata_payload)
+    if record_type in {
+        AssistantMessage,
+        MessageChunk,
+        PromptSnapshot,
+        ToolResultMessage,
+        UserMessage,
+    } and isinstance(payload.get("data"), dict):
+        payload["data"] = ConversationData(**payload["data"])
     return record_type(**payload)

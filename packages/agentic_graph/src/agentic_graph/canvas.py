@@ -22,7 +22,7 @@ async (json) => {
 
     const PIXI = await import('https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs');
 
-    const NODE_COLORS = { agent: 0x2ecc71, integration: 0xe67e22, structural_output: 0xf1c40f, entry_point: 0x3498db };
+    const NODE_COLORS = { agent: 0x2ecc71, integration: 0xe67e22, structural_output: 0xf1c40f, provider: 0x16a085, entry_point: 0x3498db };
     const NODE_W = 180, NODE_H = 80, PORT_R = 8, CONN_COL = 0xecf0f1;
 
     class AgentCanvas {
@@ -157,8 +157,14 @@ async (json) => {
           const agentNode = sourceNode.node_type === 'agent' ? sourceNode : targetNode;
           return agentNode.agent_name === 'searcher';
         }
+        if (
+          (sourceNode.node_type === 'provider' && targetNode.node_type === 'agent') ||
+          (sourceNode.node_type === 'agent' && targetNode.node_type === 'provider')
+        ) {
+          return true;
+        }
         if (sourceNode.node_type === 'agent' && targetNode.node_type === 'structural_output') return true;
-        if (sourceNode.node_type === 'agent' && targetNode.node_type === 'agent') return sourceNode.agent_name === 'planner' && targetNode.agent_name !== 'planner';
+        if (sourceNode.node_type === 'agent' && targetNode.node_type === 'agent') return sourceNode.agent_name !== targetNode.agent_name;
         return false;
       }
 

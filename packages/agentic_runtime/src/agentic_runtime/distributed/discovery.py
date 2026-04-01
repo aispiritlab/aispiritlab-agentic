@@ -84,6 +84,7 @@ class AgenticServiceDiscovery:
         role: str = "worker",
         heartbeat_seconds: float = 5.0,
         close_hook: CloseHook | None = None,
+        min_idle_ms: int = 5_000,
     ) -> DistributedService:
         """Create a ``DistributedService`` wired to this discovery instance."""
         from agentic_runtime.distributed.service import DistributedService
@@ -96,6 +97,7 @@ class AgenticServiceDiscovery:
             role=role,
             heartbeat_seconds=heartbeat_seconds,
             close_hook=close_hook,
+            min_idle_ms=min_idle_ms,
         )
 
     def create_client(

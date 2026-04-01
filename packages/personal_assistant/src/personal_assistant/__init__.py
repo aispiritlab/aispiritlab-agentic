@@ -9,12 +9,14 @@ from agentic.workflow.messages import (
     AssistantMessage,
     Command,
     Conversation,
+    ConversationData,
     Event,
     Message,
     MessageChunk,
     MessageCompleted,
     MessageStarted,
     PromptSnapshot,
+    RecordedMessageMetadata,
     ToolCallEvent,
     ToolResultMessage,
     TurnCompleted,
@@ -86,11 +88,13 @@ def personalize_agent(message: str) -> str:
     runtime = get_runtime()
     return runtime.handle(
         UserMessage(
-            runtime_id=runtime.runtime_id,
-            domain="personalize",
-            source="user",
-            target="personalize",
-            text=message,
+            data=ConversationData(role="user", text=message),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime.runtime_id,
+                domain="personalize",
+                source="user",
+                target="personalize",
+            ),
         )
     )
 
@@ -99,11 +103,13 @@ def sage_agent(message: str) -> str:
     runtime = get_runtime()
     return runtime.handle(
         UserMessage(
-            runtime_id=runtime.runtime_id,
-            domain="sage",
-            source="user",
-            target="sage",
-            text=message,
+            data=ConversationData(role="user", text=message),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime.runtime_id,
+                domain="sage",
+                source="user",
+                target="sage",
+            ),
         )
     )
 

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from agentic_runtime.messaging.message_stream import InMemoryMessageStream, project
-from agentic_runtime.messaging.messages import AssistantMessage, Message, UserMessage
+from agentic_runtime.messaging.messages import AssistantMessage, ConversationData, Message, UserMessage
 
 
 def _user(text: str) -> UserMessage:
-    return UserMessage(text=text)
+    return UserMessage(data=ConversationData(role="user", text=text))
 
 
 def _assistant(text: str) -> AssistantMessage:
-    return AssistantMessage(text=text)
+    return AssistantMessage(data=ConversationData(role="assistant", text=text))
 
 
 class TestInMemoryMessageStream:
@@ -87,7 +87,7 @@ class TestInMemoryMessageStream:
         assert stream.is_empty() is False
         result = stream.read_next()
         assert result is not None
-        assert result.text == "second"
+        assert result.data.text == "second"
 
 
 class TestProject:
@@ -98,7 +98,11 @@ class TestProject:
         stream.append(_user("how are you"))
 
         def conversation_context(messages: list[Message]) -> list[dict[str, str]]:
-            return [{"role": m.role, "text": m.text or ""} for m in messages if m.role]
+            return [
+                {"role": m.data.role, "text": m.data.text or ""}
+                for m in messages
+                if hasattr(m.data, "role") and m.data.role
+            ]
 
         result = project(stream, conversation_context)
         assert len(result) == 3

@@ -62,7 +62,7 @@ class DistributedAgenticRuntime:
 
     def handle(self, message: Message | object) -> str:
         if isinstance(message, UserMessage):
-            return self.run(message.text)
+            return self.run(message.data.text or "")
         raise NotImplementedError(
             "Distributed runtime only supports UserMessage. "
             f"Got {type(message).__name__}."

@@ -5,18 +5,21 @@ from typing import Any, Callable, Sequence
 
 import structlog
 
-from agentic.observability import LLMTracer, NoopLLMTracer
+from agentic.observability import LLMTracer, NoopLLMTracer, TraceSnapshot
 
 from ._tools import Command, JsonRepairer, Tool, ToolCall, ToolCallCommand, ToolContext
 
 
 logger = structlog.get_logger(__name__)
 
+TOOL_ERROR_PREFIXES: tuple[str, ...] = ("Błąd:", "Error:")
+
 
 @dataclass(frozen=True)
 class ToolRunResult:
     tool_call: ToolCall
     output: str
+    trace: TraceSnapshot | None = None
 
 
 class Toolset:
@@ -154,7 +157,7 @@ class Toolsets(Sequence[Toolset]):
 
     @staticmethod
     def is_tool_error(result: str) -> bool:
-        return result.startswith("Błąd:") or result.startswith("Error:")
+        return any(result.startswith(prefix) for prefix in TOOL_ERROR_PREFIXES)
 
     @staticmethod
     def _coerce_tool_call(payload: Any, repairer: JsonRepairer | None = None) -> ToolCall | None:
@@ -205,16 +208,30 @@ class Toolsets(Sequence[Toolset]):
                     except Exception as error:
                         error_text = str(error)
                         span.update(level="ERROR", output={"error": error_text})
+                        trace = resolved_tracer.current_trace
                         if self.is_tool_error(error_text):
-                            return ToolRunResult(tool_call=tool_call_tuple, output=error_text)
-                        return ToolRunResult(tool_call=tool_call_tuple, output=f"Error: {error_text}")
+                            return ToolRunResult(
+                                tool_call=tool_call_tuple,
+                                output=error_text,
+                                trace=trace,
+                            )
+                        return ToolRunResult(
+                            tool_call=tool_call_tuple,
+                            output=f"Error: {error_text}",
+                            trace=trace,
+                        )
                     output = "" if result is None else str(result)
                     span.update(output={"output": output[:500]})
-                    return ToolRunResult(tool_call=tool_call_tuple, output=output)
+                    return ToolRunResult(
+                        tool_call=tool_call_tuple,
+                        output=output,
+                        trace=resolved_tracer.current_trace,
+                    )
 
         return ToolRunResult(
             tool_call=tool_call_tuple,
             output=f"Error: tool '{function_name}' does not exist.",
+            trace=resolved_tracer.current_trace,
         )
 
     def run_tool(

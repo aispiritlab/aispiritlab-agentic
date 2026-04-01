@@ -28,7 +28,7 @@ def graph_from_dict(data: dict[str, Any]) -> AgentGraph:
 
 
 def _normalize_node_type(agent_name: str, raw_type: str | None) -> str:
-    if raw_type in {"agent", "integration", "structural_output"}:
+    if raw_type in {"agent", "integration", "structural_output", "provider"}:
         return raw_type
     if raw_type in {"router", "entry_point"}:
         return "agent"

@@ -4,11 +4,19 @@ from typing import Any
 import pytest
 
 from agentic.agent import AgentResult
-from agentic.observability import NoopLLMTracer
+from agentic.observability import NoopLLMTracer, TraceSnapshot
 
 from agentic_runtime.execution import WorkflowExecution
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
-from agentic_runtime.messaging.messages import AssistantMessage, Event, TurnCompleted, TurnStarted, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    Event,
+    RecordedMessageMetadata,
+    TurnCompleted,
+    TurnStarted,
+    UserMessage,
+)
 from agentic_runtime.turn_execution import TurnExecutor, TurnPlan
 
 
@@ -35,12 +43,14 @@ def test_turn_executor_emits_routed_turn_messages_in_order() -> None:
     reply = executor.execute(
         TurnPlan(
             incoming=UserMessage(
-                runtime_id="rt-1",
-                turn_id="turn-1",
-                domain="manage_notes",
-                source="user",
-                target="manage_notes",
-                text="Dodaj notatkę Projekt",
+                data=ConversationData(role="user", text="Dodaj notatkę Projekt"),
+                metadata=RecordedMessageMetadata(
+                    runtime_id="rt-1",
+                    turn_id="turn-1",
+                    domain="manage_notes",
+                    source="user",
+                    target="manage_notes",
+                ),
             ),
             handler=lambda message: "Notatka Projekt dodana.",
             trace_name="manage_notes",
@@ -55,15 +65,13 @@ def test_turn_executor_emits_routed_turn_messages_in_order() -> None:
     assert reply == "Notatka Projekt dodana."
     assert isinstance(bus.messages[0], TurnStarted)
     assert isinstance(bus.messages[1], Event)
-    assert bus.messages[1].name == "workflow_selected"
+    assert bus.messages[1].type == "workflow_selected"
     assert isinstance(bus.messages[2], UserMessage)
 
     assistant_messages = [m for m in bus.messages if isinstance(m, AssistantMessage)]
-    assert [m.scope for m in assistant_messages] == ["transport", "canonical"]
-    assert [m.text for m in assistant_messages] == [
-        "Notatka Projekt dodana.",
-        "Notatka Projekt dodana.",
-    ]
+    assert len(assistant_messages) == 1
+    assert assistant_messages[0].metadata.scope == "canonical"
+    assert assistant_messages[0].data.text == "Notatka Projekt dodana."
     assert isinstance(bus.messages[-1], TurnCompleted)
 
 
@@ -74,18 +82,20 @@ def test_turn_executor_preserves_trace_and_run_id_for_fallback_execution() -> No
     reply = executor.execute(
         TurnPlan(
             incoming=UserMessage(
-                runtime_id="rt-1",
-                turn_id="turn-1",
-                domain="general",
-                source="user",
-                text="Hej fallback",
+                data=ConversationData(role="user", text="Hej fallback"),
+                metadata=RecordedMessageMetadata(
+                    runtime_id="rt-1",
+                    turn_id="turn-1",
+                    domain="general",
+                    source="user",
+                ),
             ),
             handler=lambda message: WorkflowExecution(
-                text=f"fallback:{message.text}",
+                text=f"fallback:{message.data.text}",
                 agent_result=AgentResult(
-                    content=f"fallback:{message.text}",
+                    content=f"fallback:{message.data.text}",
                     run_id="run-fallback-1",
-                    trace_id="trace-turn-1",
+                    trace=TraceSnapshot(trace_id="trace-turn-1", session_id="rt-1"),
                 ),
             ),
             trace_name="general",
@@ -99,18 +109,18 @@ def test_turn_executor_preserves_trace_and_run_id_for_fallback_execution() -> No
     assert reply == "fallback:Hej fallback"
     turn_started = bus.messages[0]
     assert isinstance(turn_started, TurnStarted)
-    assert turn_started.trace_id == "trace-turn-1"
+    assert turn_started.metadata.trace_id == "trace-turn-1"
 
     user_message = bus.messages[1]
     assert isinstance(user_message, UserMessage)
-    assert user_message.trace_id == "trace-turn-1"
+    assert user_message.metadata.trace_id == "trace-turn-1"
 
     assistants = [m for m in bus.messages if isinstance(m, AssistantMessage)]
-    assert assistants[-1].agent_run_id == "run-fallback-1"
+    assert assistants[-1].metadata.agent_run_id == "run-fallback-1"
 
     turn_completed = bus.messages[-1]
     assert isinstance(turn_completed, TurnCompleted)
-    assert turn_completed.trace_id == "trace-turn-1"
+    assert turn_completed.metadata.trace_id == "trace-turn-1"
 
 
 def test_turn_executor_reuses_existing_targeted_turn_id() -> None:
@@ -120,12 +130,14 @@ def test_turn_executor_reuses_existing_targeted_turn_id() -> None:
     executor.execute(
         TurnPlan(
             incoming=UserMessage(
-                runtime_id="rt-1",
-                turn_id="turn-existing",
-                domain="sage",
-                source="user",
-                target="sage",
-                text="Pomóż mi podjąć decyzję",
+                data=ConversationData(role="user", text="Pomóż mi podjąć decyzję"),
+                metadata=RecordedMessageMetadata(
+                    runtime_id="rt-1",
+                    turn_id="turn-existing",
+                    domain="sage",
+                    source="user",
+                    target="sage",
+                ),
             ),
             handler=lambda message: "Decyzja",
             trace_name="sage",
@@ -140,8 +152,8 @@ def test_turn_executor_reuses_existing_targeted_turn_id() -> None:
     targeted_message = bus.messages[1]
     assert isinstance(turn_started, TurnStarted)
     assert isinstance(targeted_message, UserMessage)
-    assert turn_started.turn_id == "turn-existing"
-    assert targeted_message.turn_id == "turn-existing"
+    assert turn_started.metadata.turn_id == "turn-existing"
+    assert targeted_message.metadata.turn_id == "turn-existing"
 
 
 def test_turn_executor_publishes_error_turn_completed() -> None:
@@ -156,12 +168,14 @@ def test_turn_executor_publishes_error_turn_completed() -> None:
         executor.execute(
             TurnPlan(
                 incoming=UserMessage(
-                    runtime_id="rt-1",
-                    turn_id="turn-1",
-                    domain="manage_notes",
-                    source="user",
-                    target="manage_notes",
-                    text="Dodaj notatkę",
+                    data=ConversationData(role="user", text="Dodaj notatkę"),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id="rt-1",
+                        turn_id="turn-1",
+                        domain="manage_notes",
+                        source="user",
+                        target="manage_notes",
+                    ),
                 ),
                 handler=_explode,
                 trace_name="manage_notes",
@@ -174,8 +188,8 @@ def test_turn_executor_publishes_error_turn_completed() -> None:
 
     turn_completed = bus.messages[-1]
     assert isinstance(turn_completed, TurnCompleted)
-    assert turn_completed.status == "error"
-    assert turn_completed.payload == {
+    assert turn_completed.metadata.status == "error"
+    assert turn_completed.data == {
         "workflow": "manage_notes",
         "error_type": "RuntimeError",
         "error_message": "boom",

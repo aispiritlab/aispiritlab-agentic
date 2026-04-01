@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import Any
+
 import pytest
 
-from agentic_runtime.messaging.messages import CreatedNote, NoteUpdated, UserMessage
+from agentic_runtime.messaging.messages import (
+    ConversationData,
+    Event,
+    RecordedMessageMetadata,
+    UserMessage,
+)
 from agentic_runtime.output_handler import (
     EachBatchHandler,
     EachMessageHandler,
@@ -10,6 +18,22 @@ from agentic_runtime.output_handler import (
     dispatch_output_handlers,
     workflow_output_handler,
 )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CreatedNote(Event):
+    kind: str = "created_note"
+    type: str = "created_note"
+    note_name: str = ""
+    note_content: str = ""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NoteUpdated(Event):
+    kind: str = "note_updated"
+    type: str = "note_updated"
+    note_name: str = ""
+    note_path: str = ""
 
 
 def test_factory_raises_when_both_strategies_given() -> None:
@@ -53,10 +77,9 @@ def test_factory_creates_each_batch_handler() -> None:
 
 def _note_updated(note_name: str) -> NoteUpdated:
     return NoteUpdated(
-        runtime_id="r1",
-        source="test",
         note_name=note_name,
         note_path=f"/notes/{note_name}.md",
+        metadata=RecordedMessageMetadata(runtime_id="r1", source="test"),
     )
 
 
@@ -65,7 +88,11 @@ def test_dispatch_invokes_matching_each_message_handler() -> None:
         can_handle=(CreatedNote,),
         each_message=lambda m: f"handled:{m.note_name}",
     )
-    message = CreatedNote(runtime_id="r1", source="test", note_name="Foo", note_content="bar")
+    message = CreatedNote(
+        note_name="Foo",
+        note_content="bar",
+        metadata=RecordedMessageMetadata(runtime_id="r1", source="test"),
+    )
 
     results = dispatch_output_handlers([handler], message)
 
@@ -77,7 +104,10 @@ def test_dispatch_ignores_non_matching_message_type() -> None:
         can_handle=(CreatedNote,),
         each_message=lambda m: "should not run",
     )
-    message = UserMessage(runtime_id="r1", source="user", text="hello")
+    message = UserMessage(
+        data=ConversationData(role="user", text="hello"),
+        metadata=RecordedMessageMetadata(runtime_id="r1", source="user"),
+    )
 
     results = dispatch_output_handlers([handler], message)
 
@@ -93,7 +123,11 @@ def test_dispatch_runs_all_matching_handlers() -> None:
         can_handle=(CreatedNote,),
         each_message=lambda m: "b",
     )
-    message = CreatedNote(runtime_id="r1", source="test", note_name="X", note_content="Y")
+    message = CreatedNote(
+        note_name="X",
+        note_content="Y",
+        metadata=RecordedMessageMetadata(runtime_id="r1", source="test"),
+    )
 
     results = dispatch_output_handlers([handler_a, handler_b], message)
 
@@ -105,7 +139,11 @@ def test_dispatch_filters_none_results() -> None:
         can_handle=(CreatedNote,),
         each_message=lambda m: None,
     )
-    message = CreatedNote(runtime_id="r1", source="test", note_name="X", note_content="Y")
+    message = CreatedNote(
+        note_name="X",
+        note_content="Y",
+        metadata=RecordedMessageMetadata(runtime_id="r1", source="test"),
+    )
 
     results = dispatch_output_handlers([handler], message)
 

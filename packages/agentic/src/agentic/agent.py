@@ -13,7 +13,7 @@ from agentic.memory import InMemory, Memory
 from agentic.message import Message, SystemMessage, UserMessage
 from agentic.models import ModelProvider
 from agentic.models.response import ModelResponse
-from agentic.observability import LLMTracer, NoopLLMTracer
+from agentic.observability import LLMTracer, NoopLLMTracer, TraceSnapshot
 from agentic.prompts import PromptBuilder as PromptBuilder
 from agentic.response_parser import ResponseParser
 from agentic.structured_output import StructuredOutput
@@ -71,23 +71,63 @@ class AgentResult:
         reasoning: str = "",
         tool_calls: list[ToolCall] | None = None,
         usage: dict[str, Any] | None = None,
-        trace_id: str | None = None,
+        trace: TraceSnapshot | None = None,
         run_id: str | None = None,
         prompt_snapshot: PromptSnapshot | None = None,
+        attempt_no: int | None = None,
+        loop_iteration: int | None = None,
     ) -> None:
         self.content = content
         self.reasoning = reasoning
         self.tool_calls: list[ToolCall] = tool_calls or []
         self.usage = usage or {}
-        self.trace_id = trace_id
+        self.trace = trace
         self.run_id = run_id
         self.prompt_snapshot = prompt_snapshot
+        self.attempt_no = attempt_no
+        self.loop_iteration = loop_iteration
 
     @property
     def tool_call(self) -> ToolCall | None:
         if not self.tool_calls:
             return None
         return self.tool_calls[0]
+
+    @property
+    def trace_id(self) -> str | None:
+        if self.trace is None or not self.trace.trace_id:
+            return None
+        return self.trace.trace_id
+
+    @property
+    def session_id(self) -> str | None:
+        if self.trace is None or not self.trace.session_id:
+            return None
+        return self.trace.session_id
+
+    @property
+    def span_id(self) -> str | None:
+        if self.trace is None or not self.trace.span_id:
+            return None
+        return self.trace.span_id
+
+    @property
+    def parent_span_id(self) -> str | None:
+        if self.trace is None or not self.trace.parent_span_id:
+            return None
+        return self.trace.parent_span_id
+
+    @property
+    def span_name(self) -> str | None:
+        if self.trace is None or not self.trace.span_name:
+            return None
+        return self.trace.span_name
+
+    @property
+    def span_type(self) -> str | None:
+        if self.trace is None or not self.trace.span_type:
+            return None
+        return self.trace.span_type
 
 
 def _message_preview(message: str, max_length: int = 128) -> str:
@@ -264,7 +304,7 @@ class Agent:
         *,
         run_id: str,
         prompt_artifacts: PromptArtifacts,
-        trace_id: str | None,
+        trace: TraceSnapshot | None,
     ) -> AgentResult:
         parsed = self._response_parser.parse(model_response.text)
         return AgentResult(
@@ -279,7 +319,7 @@ class Agent:
                 "model": model_response.model,
                 "finish_reason": model_response.finish_reason,
             },
-            trace_id=trace_id,
+            trace=trace,
             run_id=run_id,
             prompt_snapshot=PromptSnapshot(
                 text=prompt_artifacts.system_prompt_text,
@@ -346,7 +386,7 @@ class Agent:
                 model_response,
                 run_id=run_id,
                 prompt_artifacts=prompt_artifacts,
-                trace_id=self._tracer.current_trace_id,
+                trace=self._tracer.current_trace,
             )
             span.update(output={"content": result.content[:200]})
             self._store_history(message, result.content)

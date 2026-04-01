@@ -6,6 +6,7 @@ from agentic.core_agent import CoreAgentResponse, CoreAgentic
 from agentic.models.config import ModelConfig
 from agentic.observability import LLMTracer
 from agentic.prompts import ChatPromptBuilder
+from agentic.providers.provider import ModelProviderType
 
 _DEFAULT_SYSTEM_PROMPT = "Jesteś pomocnym asystentem AI. Odpowiadaj po polsku."
 
@@ -26,6 +27,7 @@ class LLMCall:
         external_prompt_name: str | None = None,
         max_tokens: int = 1024,
         tracer: LLMTracer | None = None,
+        model_provider_type: ModelProviderType = "openai",
     ) -> None:
         prompt_builder = ChatPromptBuilder(
             system_prompt=system_prompt or (None if external_prompt_name else _DEFAULT_SYSTEM_PROMPT),
@@ -34,7 +36,7 @@ class LLMCall:
         self._agent = CoreAgentic(
             model_id=model_name,
             prompt_builder=prompt_builder,
-            model_provider_type="openai",
+            model_provider_type=model_provider_type,
             config=ModelConfig(max_tokens=max_tokens),
             tracer=tracer,
         )

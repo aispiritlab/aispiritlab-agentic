@@ -6,7 +6,13 @@ from typing import Any
 from agentic.agent import AgentResult
 from agentic.core_agent import CoreAgentResponse
 from agentic.workflow import WorkflowBuilder, WorkflowRuntime
-from agentic.workflow.messages import Event, UserCommand, UserMessage
+from agentic.workflow.messages import (
+    ConversationData,
+    Event,
+    RecordedMessageMetadata,
+    UserCommand,
+    UserMessage,
+)
 
 
 class FakeAgent:
@@ -46,14 +52,14 @@ def _response(
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Triggered(Event):
     kind: str = "triggered"
-    name: str = "triggered"
+    type: str = "triggered"
 
 
 def test_workflow_builder_creates_simple_request_response_workflow() -> None:
     agent = FakeAgent([_response("hello world")])
     workflow = WorkflowBuilder("helper").agent(agent).build()
 
-    result = workflow.handle(UserMessage(text="hi"))
+    result = workflow.handle(UserMessage(data=ConversationData(role="user", text="hi")))
 
     assert result.text == "hello world"
     assert agent.calls == ["hi"]
@@ -63,8 +69,8 @@ def test_workflow_builder_uses_start_and_reset_hooks() -> None:
     agent = FakeAgent([_response("unused")])
     workflow = WorkflowBuilder("helper").agent(agent).build()
 
-    started = workflow.handle(UserCommand(name="start"))
-    reset = workflow.handle(UserCommand(name="reset"))
+    started = workflow.handle(UserCommand(type="start"))
+    reset = workflow.handle(UserCommand(type="reset"))
 
     assert started == "started"
     assert reset == ""
@@ -77,16 +83,16 @@ def test_workflow_builder_emits_events_without_custom_decider() -> None:
     workflow = (
         WorkflowBuilder("planner")
         .agent(agent)
-        .emit_events(lambda response: [Event(name="delegated", payload={"count": len(response.tool_calls)})])
+        .emit_events(lambda response: [Event(type="delegated", data={"count": len(response.tool_calls)})])
         .build()
     )
 
-    result = workflow.handle(UserMessage(text="plan"))
+    result = workflow.handle(UserMessage(data=ConversationData(role="user", text="plan")))
 
     assert result.text == "done"
     assert len(result.emitted_events) == 1
-    assert result.emitted_events[0].name == "delegated"
-    assert result.emitted_events[0].payload == {"count": 1}
+    assert result.emitted_events[0].type == "delegated"
+    assert result.emitted_events[0].data == {"count": 1}
 
 
 def test_workflow_builder_maps_external_event_inputs() -> None:
@@ -96,14 +102,19 @@ def test_workflow_builder_maps_external_event_inputs() -> None:
         .agent(agent)
         .inputs("Triggered", "UserCommand", "UserMessage")
         .map_input(
-            lambda message: UserMessage(text=message.text or "")
+            lambda message: UserMessage(data=ConversationData(role="user", text=message.data.get("text", "")))
             if isinstance(message, Triggered)
             else message if isinstance(message, UserMessage) else None
         )
         .build()
     )
 
-    result = workflow.handle(Triggered(text="external input"))
+    result = workflow.handle(
+        Triggered(
+            data={"text": "external input"},
+            metadata=RecordedMessageMetadata(),
+        )
+    )
 
     assert result.text == "mapped"
     assert agent.calls == ["external input"]

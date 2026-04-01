@@ -1,11 +1,49 @@
+from __future__ import annotations
+
 import sqlite3
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import orjson
 
-from agentic_runtime.messaging.messages import CreatedNote, Event, NoteUpdated, UserCommand, UserMessage
+from agentic_runtime.messaging.messages import (
+    ConversationData,
+    Event,
+    RecordedMessageMetadata,
+    UserCommand,
+    UserMessage,
+)
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.storage.sqlite_store import SQLiteMessageStore
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CreatedNote(Event):
+    kind: str = "created_note"
+    type: str = "created_note"
+    note_name: str = ""
+    note_content: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.data:
+            object.__setattr__(
+                self, "data", {"note_name": self.note_name, "note_content": self.note_content}
+            )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NoteUpdated(Event):
+    kind: str = "note_updated"
+    type: str = "note_updated"
+    note_name: str = ""
+    note_path: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.data:
+            object.__setattr__(
+                self, "data", {"note_name": self.note_name, "note_path": self.note_path}
+            )
 
 
 def test_sqlite_message_store_persists_runtime_stream(tmp_path: Path) -> None:
@@ -18,44 +56,58 @@ def test_sqlite_message_store_persists_runtime_stream(tmp_path: Path) -> None:
 
     bus.publish(
         UserMessage(
-            runtime_id="runtime-1",
-            domain="general",
-            source="user",
-            text="hej",
+            data=ConversationData(role="user", text="hej"),
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1",
+                domain="general",
+                source="user",
+            ),
         )
     )
     bus.publish(
         Event(
-            runtime_id="runtime-1",
-            domain="routing",
-            source="router",
-            target="manage_notes",
-            name="workflow_selected",
-            payload={"workflow": "manage_notes"},
+            type="workflow_selected",
+            data={"workflow": "manage_notes"},
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1",
+                domain="routing",
+                source="router",
+                target="manage_notes",
+            ),
         )
     )
     bus.publish(
         UserCommand(
-            runtime_id="runtime-1",
-            domain="manage_notes",
-            source="runtime",
-            name="reset",
+            type="reset",
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1",
+                domain="manage_notes",
+                source="runtime",
+            ),
         )
     )
     bus.publish(
         CreatedNote(
-            runtime_id="runtime-1",
-            source="manage_notes",
             note_name="Projekt",
             note_content="Plan sprintu",
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1",
+                source="manage_notes",
+                domain="manage_notes",
+                target="organizer",
+            ),
         )
     )
     bus.publish(
         NoteUpdated(
-            runtime_id="runtime-1",
-            source="manage_notes",
             note_name="Projekt",
             note_path="/vault/Projekt.md",
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1",
+                source="manage_notes",
+                domain="manage_notes",
+                target="rag",
+            ),
         )
     )
     bus.close()

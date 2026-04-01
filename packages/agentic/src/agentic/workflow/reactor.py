@@ -7,7 +7,7 @@ from typing import Any, Callable, Protocol, Sequence
 from agentic.core_agent import CoreAgentic
 from agentic.message import ToolMessage
 
-from agentic.workflow.messages import AssistantMessage, Message
+from agentic.workflow.messages import AssistantMessage, ConversationData, Message, RecordedMessageMetadata
 
 
 class Reactor(Protocol):
@@ -46,20 +46,27 @@ class LLMReactor:
         self._agent = agent
 
     def can_handle(self, command: Message) -> bool:
-        return command.text is not None and len(command.text) > 0
+        return isinstance(command.data, ConversationData) and command.data.text is not None and len(command.data.text) > 0
 
     def invoke(self, command: Message) -> Message:
-        text = command.text or ""
+        text = command.data.text if isinstance(command.data, ConversationData) and command.data.text else ""
         response = self._agent.respond(text)
         tool_calls = tuple(response.result.tool_calls) if response.result.tool_calls else ()
         return LLMResponse(
-            text=response.output,
-            domain=command.domain,
-            source="llm",
-            reply_to_message_id=command.message_id or None,
-            runtime_id=command.runtime_id,
-            turn_id=command.turn_id,
-            agent_run_id=response.result.run_id,
+            data=ConversationData(role="assistant", text=response.output),
+            metadata=RecordedMessageMetadata(
+                runtime_id=command.metadata.runtime_id,
+                session_id=command.metadata.session_id,
+                turn_id=command.metadata.turn_id,
+                reply_to_message_id=getattr(command.metadata, "message_id", "") or None,
+                domain=command.metadata.domain,
+                source="llm",
+                target=command.metadata.source or None,
+                agent_run_id=response.result.run_id,
+                trace=command.metadata.trace,
+                attempt_no=command.metadata.attempt_no,
+                loop_iteration=command.metadata.loop_iteration,
+            ),
             tool_calls=tool_calls,
             _agent_result=response.result,
             _tool_results=response.tool_results,
@@ -85,30 +92,39 @@ class MultiTurnLLMReactor:
         self._post_process = post_process
 
     def can_handle(self, command: Message) -> bool:
-        return command.text is not None and len(command.text) > 0
+        return isinstance(command.data, ConversationData) and command.data.text is not None and len(command.data.text) > 0
 
     def invoke(self, command: Message) -> Message:
-        text = command.text or ""
+        text = command.data.text if isinstance(command.data, ConversationData) and command.data.text else ""
         response = self._agent.respond(text)
+        response.result.loop_iteration = 0
 
         turn = 0
         while response.tool_results and turn < self._max_turns:
             turn += 1
             tool_msg = ToolMessage(self._format_tool_results(response))
             response = self._agent.respond(tool_msg)
+            response.result.loop_iteration = turn
 
         output = response.output
         if self._post_process:
             output = self._post_process(output)
 
         return LLMResponse(
-            text=output,
-            domain=command.domain,
-            source="llm",
-            reply_to_message_id=command.message_id or None,
-            runtime_id=command.runtime_id,
-            turn_id=command.turn_id,
-            agent_run_id=response.result.run_id,
+            data=ConversationData(role="assistant", text=output),
+            metadata=RecordedMessageMetadata(
+                runtime_id=command.metadata.runtime_id,
+                session_id=command.metadata.session_id,
+                turn_id=command.metadata.turn_id,
+                reply_to_message_id=getattr(command.metadata, "message_id", "") or None,
+                domain=command.metadata.domain,
+                source="llm",
+                target=command.metadata.source or None,
+                agent_run_id=response.result.run_id,
+                trace=command.metadata.trace,
+                attempt_no=command.metadata.attempt_no,
+                loop_iteration=command.metadata.loop_iteration,
+            ),
             tool_calls=tuple(response.result.tool_calls) if response.result.tool_calls else (),
             _agent_result=response.result,
             _tool_results=response.tool_results,

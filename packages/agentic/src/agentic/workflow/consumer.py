@@ -67,24 +67,60 @@ class MessageConsumer:
                 with self._tracer.step(
                     name=f"reactor.{type(command).__name__}",
                     span_type="TOOL",
-                    attributes={"step": step},
+                    attributes={"step": step, "command_type": type(command).__name__},
                 ) as span:
-                    output = self._invoke_with_retry(reactor, command)
-                    span.update(output={"message_type": type(output).__name__})
+                    output, attempts = self._invoke_with_retry(reactor, command)
+                    output = self._bind_output_context(
+                        command=command,
+                        output=output,
+                        step=step,
+                        attempts=attempts,
+                    )
+                    span.update(
+                        output={"message_type": type(output).__name__},
+                        metadata={"attempt_no": attempts, "loop_iteration": step},
+                    )
 
                 stream.append(output)
 
-    def _invoke_with_retry(self, reactor: Reactor, command: Message) -> Message:
-        last_error: Exception | None = None
+    @staticmethod
+    def _bind_output_context(
+        *,
+        command: Message,
+        output: Message,
+        step: int,
+        attempts: int,
+    ) -> Message:
+        return output.with_metadata(
+            session_id=(
+                output.metadata.session_id
+                or command.metadata.session_id
+                or command.metadata.runtime_id
+            ),
+            trace_id=output.metadata.trace_id or command.metadata.trace_id,
+            span_id=output.metadata.span_id or command.metadata.span_id,
+            parent_span_id=(
+                output.metadata.parent_span_id or command.metadata.parent_span_id
+            ),
+            span_name=output.metadata.span_name or command.metadata.span_name,
+            span_type=output.metadata.span_type or command.metadata.span_type,
+            attempt_no=output.metadata.attempt_no or attempts,
+            loop_iteration=output.metadata.loop_iteration or step,
+        )
+
+    def _invoke_with_retry(self, reactor: Reactor, command: Message) -> tuple[Message, int]:
         for attempt in range(self._config.max_retries + 1):
             try:
-                return reactor.invoke(command)
+                with self._tracer.step(
+                    name=f"reactor.{type(command).__name__}.attempt",
+                    span_type="CHAIN",
+                    attributes={"attempt_no": attempt + 1},
+                ):
+                    return reactor.invoke(command), attempt + 1
             except Exception as error:
-                last_error = error
                 if (
                     attempt >= self._config.max_retries
                     or not self._config.is_retryable(error)
                 ):
                     raise
-        assert last_error is not None
-        raise last_error
+        raise AssertionError("unreachable: retry loop must return or raise")

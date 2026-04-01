@@ -6,7 +6,6 @@ No application-specific agents are hardcoded here.
 
 from __future__ import annotations
 
-from dataclasses import replace
 import threading
 from typing import Any, Callable, Protocol
 import uuid
@@ -19,7 +18,9 @@ from structlog import get_logger
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
+    ConversationData,
     Message,
+    RecordedMessageMetadata,
     PromptSnapshot,
     UserCommand,
     UserMessage,
@@ -31,6 +32,7 @@ from .output_handler import WorkflowOutputHandler
 from .settings import Settings, settings as default_settings
 from .trace import create_tracer, init_tracing
 from .turn_execution import TurnExecutor, TurnPlan, coerce_reply_text
+from .workflow_descriptors import render_workflow_descriptors
 
 logger = get_logger(__name__)
 
@@ -108,16 +110,7 @@ class AgenticRuntime:
         return str(uuid.uuid7())
 
     def _available_workflows_summary(self) -> str:
-        lines = []
-        for workflow in self._routable_workflows().values():
-            description = workflow.description
-            capabilities = ", ".join(description.capabilities)
-            workflow_name = workflow.__class__.__name__
-            lines.append(
-                f"- {description.agent_name} (workflow: {workflow_name}): "
-                f"{description.description} (capabilities: {capabilities})"
-            )
-        return "\n".join(lines)
+        return render_workflow_descriptors(list(self._routable_workflows().values()))
 
     def _routable_workflows(self) -> dict[str, AgenticWorkflow]:
         routable: dict[str, AgenticWorkflow] = {}
@@ -177,10 +170,12 @@ class AgenticRuntime:
     def run(self, text: str) -> str:
         return self.handle(
             UserMessage(
-                runtime_id=self.runtime_id,
-                domain="general",
-                source="user",
-                text=text,
+                data=ConversationData(role="user", text=text),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=self.runtime_id,
+                    domain="general",
+                    source="user",
+                ),
             )
         )
 
@@ -231,27 +226,34 @@ class AgenticRuntime:
             snapshot = router_response.result.prompt_snapshot
             messages.append(
                 PromptSnapshot(
-                    runtime_id=message.runtime_id,
-                    turn_id=turn_id,
-                    domain="routing",
-                    source="router",
-                    target=message.source,
-                    text=snapshot.text,
-                    payload={"tool_schema": list(snapshot.tool_schema)},
-                    prompt_name=snapshot.prompt_name,
-                    prompt_hash=snapshot.prompt_hash,
-                    agent_run_id=router_response.result.run_id,
+                    data=ConversationData(
+                        role="system",
+                        text=snapshot.text,
+                        payload={"tool_schema": list(snapshot.tool_schema)},
+                    ),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=message.metadata.runtime_id,
+                        turn_id=turn_id,
+                        domain="routing",
+                        source="router",
+                        target=message.metadata.source,
+                        prompt_name=snapshot.prompt_name,
+                        prompt_hash=snapshot.prompt_hash,
+                        agent_run_id=router_response.result.run_id,
+                    ),
                 )
             )
         messages.append(
             AssistantMessage(
-                runtime_id=message.runtime_id,
-                turn_id=turn_id,
-                domain="routing",
-                source="router",
-                target=message.source,
-                text=workflow_name,
-                agent_run_id=router_response.result.run_id,
+                data=ConversationData(role="assistant", text=workflow_name),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    turn_id=turn_id,
+                    domain="routing",
+                    source="router",
+                    target=message.metadata.source,
+                    agent_run_id=router_response.result.run_id,
+                ),
             )
         )
         return tuple(messages)
@@ -264,11 +266,12 @@ class AgenticRuntime:
     def _plan_general_turn(self, message: UserMessage) -> TurnPlan:
         available_summary = self._available_workflows_summary()
         route_response = getattr(self.router, "route_response", None)
+        message_text = message.data.text if isinstance(message.data, ConversationData) else ""
         if callable(route_response):
-            router_response = route_response(message.text, available_summary)
+            router_response = route_response(message_text, available_summary)
             workflow_name = router_response.output.strip()
         else:
-            workflow_name = self.router.route(message.text, available_summary)
+            workflow_name = self.router.route(message_text, available_summary)
             router_response = None
         workflow = self._routable_workflows().get(workflow_name)
         turn_id = self._new_turn_id()
@@ -282,11 +285,13 @@ class AgenticRuntime:
         if workflow is None:
             return TurnPlan(
                 incoming=UserMessage(
-                    runtime_id=message.runtime_id,
-                    turn_id=turn_id,
-                    domain="general",
-                    source=message.source,
-                    text=message.text,
+                    data=ConversationData(role="user", text=message_text),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=message.metadata.runtime_id,
+                        turn_id=turn_id,
+                        domain="general",
+                        source=message.metadata.source,
+                    ),
                 ),
                 handler=self._run_general_fallback,
                 trace_name="general",
@@ -299,12 +304,14 @@ class AgenticRuntime:
 
         return TurnPlan(
             incoming=UserMessage(
-                runtime_id=message.runtime_id,
-                turn_id=turn_id,
-                domain=workflow_name,
-                source=message.source,
-                target=workflow_name,
-                text=message.text,
+                data=ConversationData(role="user", text=message_text),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    turn_id=turn_id,
+                    domain=workflow_name,
+                    source=message.metadata.source,
+                    target=workflow_name,
+                ),
             ),
             handler=workflow.handle,
             trace_name=workflow_name,
@@ -320,12 +327,12 @@ class AgenticRuntime:
         return self._get_turn_executor().execute(self._plan_general_turn(message))
 
     def _plan_targeted_turn(self, message: UserMessage) -> TurnPlan:
-        target = message.target
+        target = message.metadata.target
         assert target is not None
-        turn_id = message.turn_id or self._new_turn_id()
+        turn_id = message.metadata.turn_id or self._new_turn_id()
         workflow = self.workflows[target]
         return TurnPlan(
-            incoming=replace(message, turn_id=turn_id, domain=target),
+            incoming=message.with_metadata(turn_id=turn_id, domain=target),
             handler=workflow.handle,
             trace_name=target,
             lifecycle_domain=target,
@@ -338,17 +345,21 @@ class AgenticRuntime:
         return self._get_turn_executor().execute(self._plan_targeted_turn(message))
 
     def handle(self, message: Message) -> str:
-        if isinstance(message, UserMessage) and message.domain == "general" and message.source == "user":
+        if (
+            isinstance(message, UserMessage)
+            and message.metadata.domain == "general"
+            and message.metadata.source == "user"
+        ):
             return self._handle_general_user_message(message)
 
         if isinstance(message, UserMessage):
-            target = message.target
+            target = message.metadata.target
             if target and target in self.workflows:
                 return self._handle_targeted_message(message)
 
         if isinstance(message, UserCommand):
             self.bus.publish(message)
-            target = message.domain or message.target
+            target = message.metadata.domain or message.metadata.target
             if target and target in self.workflows:
                 reply = self.workflows[target].handle(message)
                 return coerce_reply_text(reply)

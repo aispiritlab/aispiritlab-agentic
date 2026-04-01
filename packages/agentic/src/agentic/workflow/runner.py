@@ -9,7 +9,7 @@ from __future__ import annotations
 from agentic.workflow.consumer import ConsumerConfig, MessageConsumer
 from agentic.workflow.execution import ExecutionTurnRecord, WorkflowExecution
 from agentic.workflow.message_stream import InMemoryMessageStream
-from agentic.workflow.messages import Message, UserMessage
+from agentic.workflow.messages import ConversationData, Message, UserMessage
 from agentic.workflow.reactor import Decider, LLMResponse, TechnicalRoutingFn
 
 
@@ -54,6 +54,12 @@ def _build_execution(messages: list[Message] | tuple[Message, ...]) -> WorkflowE
 
     last_response = llm_responses[-1]
 
+    for response in llm_responses:
+        if response._agent_result is None:
+            continue
+        response._agent_result.attempt_no = response.metadata.attempt_no
+        response._agent_result.loop_iteration = response.metadata.loop_iteration
+
     recorded_turns = tuple(
         ExecutionTurnRecord(
             agent_result=resp._agent_result,
@@ -64,7 +70,7 @@ def _build_execution(messages: list[Message] | tuple[Message, ...]) -> WorkflowE
     )
 
     return WorkflowExecution(
-        text=last_response.text or "",
+        text=last_response.data.text if isinstance(last_response.data, ConversationData) and last_response.data.text else "",
         agent_result=last_response._agent_result,
         tool_results=last_response._tool_results,
         emitted_events=tuple(domain_events),

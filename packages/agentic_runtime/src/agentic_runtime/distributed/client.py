@@ -3,7 +3,14 @@ from __future__ import annotations
 import time
 import uuid
 
-from agentic_runtime.messaging.messages import AssistantMessage, Message, TurnCompleted, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    Message,
+    RecordedMessageMetadata,
+    TurnCompleted,
+    UserMessage,
+)
 
 from .transport import RedisStreamsTransport
 
@@ -34,12 +41,14 @@ class DistributedChatClient:
         last_seen_id = self._transport.last_message_id(self._source)
         self._transport.publish_message(
             UserMessage(
-                runtime_id=runtime_id,
-                turn_id=turn_id,
-                domain=self._domain,
-                source=self._source,
-                target=self._entry_agent,
-                text=prompt,
+                data=ConversationData(role="user", text=prompt),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=runtime_id,
+                    turn_id=turn_id,
+                    domain=self._domain,
+                    source=self._source,
+                    target=self._entry_agent,
+                ),
             )
         )
 
@@ -58,12 +67,18 @@ class DistributedChatClient:
             for record in records:
                 next_id = record.entry_id
                 message = record.record
-                if not isinstance(message, Message) or message.turn_id != turn_id:
+                if (
+                    not isinstance(message, Message)
+                    or message.metadata.turn_id != turn_id
+                ):
                     continue
-                if isinstance(message, AssistantMessage) and message.scope == "canonical":
-                    return message.text
-                if isinstance(message, TurnCompleted) and message.status == "error":
-                    payload = message.payload if isinstance(message.payload, dict) else {}
+                if (
+                    isinstance(message, AssistantMessage)
+                    and message.metadata.scope == "canonical"
+                ):
+                    return message.data.text or ""
+                if isinstance(message, TurnCompleted) and message.metadata.status == "error":
+                    payload = message.data if isinstance(message.data, dict) else {}
                     error_message = payload.get("error_message")
                     if isinstance(error_message, str) and error_message:
                         raise RuntimeError(error_message)

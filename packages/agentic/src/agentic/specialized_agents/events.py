@@ -1,26 +1,72 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from typing import Any
 
-from agentic.workflow.messages import Event
+from agentic.workflow.messages import Event, Message, RecordedMessageMetadata
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+def _metadata_with_updates(metadata: RecordedMessageMetadata, **updates: Any) -> RecordedMessageMetadata:
+    values = {field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)}
+    values.update(updates)
+    return RecordedMessageMetadata(**values)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True, init=False)
 class TaskDelegated(Event):
     """Emitted when a PlannerAgent delegates a task to another agent."""
 
-    kind: str = "task_delegated"
-    name: str = "task_delegated"
-    target_agent: str = ""
-    task_description: str = ""
+    def __init__(
+        self,
+        *,
+        data: dict[str, Any] | None = None,
+        target_agent: str = "",
+        task_description: str = "",
+        metadata: RecordedMessageMetadata | None = None,
+    ) -> None:
+        super().__init__(
+            kind="task_delegated",
+            type="task_delegated",
+            data=data or {
+                "target_agent": target_agent,
+                "task_description": task_description,
+            },
+            metadata=metadata or RecordedMessageMetadata(),
+        )
+
+    def with_metadata(self, **updates: Any) -> Message:
+        return TaskDelegated(data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates))
+
+    def with_data(self, **updates: Any) -> Message:
+        return TaskDelegated(data={**self.data, **updates}, metadata=self.metadata)
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True, init=False)
 class TaskCompleted(Event):
     """Emitted when a delegated task has been completed by an agent."""
 
-    kind: str = "task_completed"
-    name: str = "task_completed"
-    target_agent: str = ""
-    task_description: str = ""
-    result: str = ""
+    def __init__(
+        self,
+        *,
+        data: dict[str, Any] | None = None,
+        target_agent: str = "",
+        task_description: str = "",
+        result: str = "",
+        metadata: RecordedMessageMetadata | None = None,
+    ) -> None:
+        super().__init__(
+            kind="task_completed",
+            type="task_completed",
+            data=data or {
+                "target_agent": target_agent,
+                "task_description": task_description,
+                "result": result,
+            },
+            metadata=metadata or RecordedMessageMetadata(),
+        )
+
+    def with_metadata(self, **updates: Any) -> Message:
+        return TaskCompleted(data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates))
+
+    def with_data(self, **updates: Any) -> Message:
+        return TaskCompleted(data={**self.data, **updates}, metadata=self.metadata)

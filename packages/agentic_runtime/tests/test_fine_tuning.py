@@ -7,10 +7,12 @@ from agentic_runtime.fine_tuning import (
 )
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
+    ConversationData,
     Event,
     MessageChunk,
     MessageStarted,
     PromptSnapshot,
+    RecordedMessageMetadata,
     ToolCallEvent,
     ToolResultMessage,
     TurnCompleted,
@@ -19,7 +21,30 @@ from agentic_runtime.messaging.messages import (
 )
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.storage.sqlite_store import SQLiteMessageStore
-from agentic_runtime.messaging.streaming import build_assistant_messages
+from agentic_runtime.messaging.streaming import build_assistant_messages, resolve_trace_context
+
+
+def _user_message(
+    *,
+    runtime_id: str,
+    turn_id: str,
+    message_id: str = "",
+    domain: str,
+    source: str,
+    target: str | None = None,
+    text: str | None = None,
+) -> UserMessage:
+    return UserMessage(
+        data=ConversationData(role="user", text=text),
+        metadata=RecordedMessageMetadata(
+            runtime_id=runtime_id,
+            turn_id=turn_id,
+            message_id=message_id,
+            domain=domain,
+            source=source,
+            target=target,
+        ),
+    )
 
 
 def test_sqlite_store_assembles_chunked_assistant_message_into_conversation_record(
@@ -32,7 +57,7 @@ def test_sqlite_store_assembles_chunked_assistant_message_into_conversation_reco
         flush_interval_seconds=0.01,
     )
     bus = InMemoryMessageBus(store=store)
-    incoming = UserMessage(
+    incoming = _user_message(
         runtime_id="runtime-1",
         turn_id="turn-1",
         message_id="user-1",
@@ -46,10 +71,11 @@ def test_sqlite_store_assembles_chunked_assistant_message_into_conversation_reco
         incoming=incoming,
         agent_name="manage_notes",
         text=large_text,
-        reply_to_message_id=incoming.message_id,
+        reply_to_message_id=incoming.metadata.message_id,
         agent_run_id="run-1",
         max_inline_bytes=64,
         chunk_bytes=64,
+        ctx=resolve_trace_context(incoming=incoming),
     )
 
     bus.publish_many(messages)
@@ -100,41 +126,47 @@ def test_fine_tuning_exports_keep_router_and_agent_rows_separate(tmp_path: Path)
 
     bus.publish(
         PromptSnapshot(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="routing-prompt",
-            domain="routing",
-            source="router",
-            target="user",
-            text="Select the workflow.",
-            prompt_name="router",
-            prompt_hash="router-hash",
+            data=ConversationData(role="system", text="Select the workflow."),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="routing-prompt",
+                domain="routing",
+                source="router",
+                target="user",
+                prompt_name="router",
+                prompt_hash="router-hash",
+            ),
         )
     )
     bus.publish(
         Event(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            domain="routing",
-            source="router",
-            target="manage_notes",
-            scope="transport",
-            name="workflow_selected",
-            payload={"workflow": "manage_notes"},
+            type="workflow_selected",
+            data={"workflow": "manage_notes"},
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                domain="routing",
+                source="router",
+                target="manage_notes",
+                scope="transport",
+            ),
         )
     )
     bus.publish(
         TurnStarted(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            domain="manage_notes",
-            source="runtime",
-            target="manage_notes",
-            payload={"workflow": "manage_notes"},
+            data={"workflow": "manage_notes"},
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                domain="manage_notes",
+                source="runtime",
+                target="manage_notes",
+            ),
         )
     )
     bus.publish(
-        UserMessage(
+        _user_message(
             runtime_id=runtime_id,
             turn_id=turn_id,
             message_id="user-1",
@@ -146,67 +178,84 @@ def test_fine_tuning_exports_keep_router_and_agent_rows_separate(tmp_path: Path)
     )
     bus.publish(
         PromptSnapshot(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="workflow-prompt",
-            domain="manage_notes",
-            source="manage_notes",
-            target="user",
-            text="You manage notes.",
-            payload={"tool_schema": [{"name": "add_note"}]},
-            prompt_name="manage-notes",
-            prompt_hash="workflow-hash",
+            data=ConversationData(
+                role="system",
+                text="You manage notes.",
+                payload={"tool_schema": [{"name": "add_note"}]},
+            ),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="workflow-prompt",
+                domain="manage_notes",
+                source="manage_notes",
+                target="user",
+                prompt_name="manage-notes",
+                prompt_hash="workflow-hash",
+            ),
         )
     )
     bus.publish(
-        ToolCallEvent(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="tool-call-message",
-            reply_to_message_id="user-1",
-            domain="manage_notes",
-            source="manage_notes",
-            target="user",
-            payload={"name": "add_note", "parameters": {"note_name": "Projekt"}},
-            tool_call_id="call-1",
-        )
+            ToolCallEvent(
+                data={"name": "add_note", "parameters": {"note_name": "Projekt"}},
+                metadata=RecordedMessageMetadata(
+                    runtime_id=runtime_id,
+                    turn_id=turn_id,
+                    message_id="tool-call-message",
+                    reply_to_message_id="user-1",
+                    domain="manage_notes",
+                    source="manage_notes",
+                    target="user",
+                    role="assistant",
+                    tool_call_id="call-1",
+                ),
+            )
     )
     bus.publish(
         ToolResultMessage(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="tool-result-message",
-            reply_to_message_id="tool-call-message",
-            domain="manage_notes",
-            source="add_note",
-            target="manage_notes",
-            name="add_note",
-            text="Zapisano notatkę Projekt.",
-            payload={"note_name": "Projekt"},
-            tool_call_id="call-1",
+            data=ConversationData(
+                role="tool",
+                name="add_note",
+                text="Zapisano notatkę Projekt.",
+                payload={"note_name": "Projekt"},
+            ),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="tool-result-message",
+                reply_to_message_id="tool-call-message",
+                domain="manage_notes",
+                source="add_note",
+                target="manage_notes",
+                tool_call_id="call-1",
+            ),
         )
     )
     bus.publish(
         AssistantMessage(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="assistant-1",
-            reply_to_message_id="tool-result-message",
-            domain="manage_notes",
-            source="manage_notes",
-            target="user",
-            text="Notatka gotowa.",
+            data=ConversationData(role="assistant", text="Notatka gotowa."),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="assistant-1",
+                reply_to_message_id="tool-result-message",
+                domain="manage_notes",
+                source="manage_notes",
+                target="user",
+            ),
         )
     )
     bus.publish(
         TurnCompleted(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            domain="manage_notes",
-            source="runtime",
-            target="manage_notes",
-            status="success",
-            payload={"workflow": "manage_notes", "final_message_id": "assistant-1"},
+            data={"workflow": "manage_notes", "final_message_id": "assistant-1"},
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                domain="manage_notes",
+                source="runtime",
+                target="manage_notes",
+                status="success",
+            ),
         )
     )
     bus.close()
@@ -244,10 +293,16 @@ def test_fine_tuning_exports_keep_router_and_agent_rows_separate(tmp_path: Path)
             "tools": [{"name": "add_note"}],
             "metadata": {
                 "runtime_id": runtime_id,
+                "session_id": runtime_id,
                 "turn_id": turn_id,
                 "domain": "manage_notes",
                 "prompt_name": "manage-notes",
                 "prompt_hash": "workflow-hash",
+                "trace_id": None,
+                "agent_run_id": None,
+                "final_message_id": "assistant-1",
+                "retry_count": 0,
+                "loop_iteration_count": 0,
             },
         }
     ]
@@ -260,11 +315,13 @@ def test_fine_tuning_exports_keep_router_and_agent_rows_separate(tmp_path: Path)
             ],
             "metadata": {
                 "runtime_id": runtime_id,
+                "session_id": runtime_id,
                 "turn_id": turn_id,
                 "domain": "routing",
                 "expected_workflow": "manage_notes",
                 "prompt_name": "router",
                 "prompt_hash": "router-hash",
+                "trace_id": None,
             },
         }
     ]
@@ -283,16 +340,18 @@ def test_fine_tuning_export_skips_incomplete_chunked_turn(tmp_path: Path) -> Non
 
     bus.publish(
         TurnStarted(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            domain="manage_notes",
-            source="runtime",
-            target="manage_notes",
-            payload={"workflow": "manage_notes"},
+            data={"workflow": "manage_notes"},
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                domain="manage_notes",
+                source="runtime",
+                target="manage_notes",
+            ),
         )
     )
     bus.publish(
-        UserMessage(
+        _user_message(
             runtime_id=runtime_id,
             turn_id=turn_id,
             message_id="user-1",
@@ -304,54 +363,64 @@ def test_fine_tuning_export_skips_incomplete_chunked_turn(tmp_path: Path) -> Non
     )
     bus.publish(
         PromptSnapshot(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="workflow-prompt",
-            domain="manage_notes",
-            source="manage_notes",
-            target="user",
-            text="You manage notes.",
-            prompt_name="manage-notes",
-            prompt_hash="workflow-hash",
+            data=ConversationData(role="system", text="You manage notes."),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="workflow-prompt",
+                domain="manage_notes",
+                source="manage_notes",
+                target="user",
+                prompt_name="manage-notes",
+                prompt_hash="workflow-hash",
+            ),
         )
     )
     bus.publish(
-        MessageStarted(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="assistant-1",
-            reply_to_message_id="user-1",
-            domain="manage_notes",
-            source="manage_notes",
-            target="user",
-            role="assistant",
-            payload={"logical_kind": "assistant_message", "chunk_count": 2},
-        )
+            MessageStarted(
+                data={"logical_kind": "assistant_message", "chunk_count": 2},
+                metadata=RecordedMessageMetadata(
+                    runtime_id=runtime_id,
+                    turn_id=turn_id,
+                    message_id="assistant-1",
+                    reply_to_message_id="user-1",
+                    domain="manage_notes",
+                    source="manage_notes",
+                    target="user",
+                    scope="transport",
+                    role="assistant",
+                ),
+            )
     )
     bus.publish(
-        MessageChunk(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            message_id="assistant-1",
-            reply_to_message_id="user-1",
-            domain="manage_notes",
-            source="manage_notes",
-            target="user",
-            role="assistant",
-            text="Notatka ",
-            chunk_index=0,
-            chunk_count=2,
+            MessageChunk(
+                data=ConversationData(role="assistant", text="Notatka "),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=runtime_id,
+                    turn_id=turn_id,
+                    message_id="assistant-1",
+                    reply_to_message_id="user-1",
+                    domain="manage_notes",
+                    source="manage_notes",
+                    target="user",
+                    scope="transport",
+                    role="assistant",
+                    chunk_index=0,
+                    chunk_count=2,
+            ),
         )
     )
     bus.publish(
         TurnCompleted(
-            runtime_id=runtime_id,
-            turn_id=turn_id,
-            domain="manage_notes",
-            source="runtime",
-            target="manage_notes",
-            status="success",
-            payload={"workflow": "manage_notes", "final_message_id": "assistant-1"},
+            data={"workflow": "manage_notes", "final_message_id": "assistant-1"},
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                domain="manage_notes",
+                source="runtime",
+                target="manage_notes",
+                status="success",
+            ),
         )
     )
     bus.close()

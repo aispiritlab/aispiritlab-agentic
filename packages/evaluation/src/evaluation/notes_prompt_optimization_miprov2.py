@@ -198,7 +198,7 @@ def main() -> None:
         required=True,
         help=(
             "Evaluation definition in module:attribute format, for example "
-            "`agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION`."
+            "`personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION`."
         ),
     )
     parser.add_argument(

@@ -1,15 +1,38 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Sequence
 
 from agentic.agent import AgentResult
 from agentic.core_agent import CoreAgentResponse
 from agentic.tools import ToolRunResult
 
-from agentic_runtime.messaging.messages import CreatedNote, Message, NoteUpdated, UserMessage
+from agentic_runtime.messaging.messages import (
+    ConversationData,
+    Event,
+    Message,
+    RecordedMessageMetadata,
+    UserMessage,
+)
 from agentic_runtime.reactor import LLMReactor, LLMResponse, MultiTurnLLMReactor
 from agentic_runtime.routing import make_llm_routing
 from agentic_runtime.workflow_runner import run_workflow
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CreatedNote(Event):
+    kind: str = "created_note"
+    type: str = "created_note"
+    note_name: str = ""
+    note_content: str = ""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NoteUpdated(Event):
+    kind: str = "note_updated"
+    type: str = "note_updated"
+    note_name: str = ""
+    note_path: str = ""
 
 
 def _make_agent_result(
@@ -49,15 +72,22 @@ def _passthrough_decider(msg: Message) -> Sequence[Message]:
     return []
 
 
+def _user_message(text: str, runtime_id: str = "rt", turn_id: str = "") -> UserMessage:
+    return UserMessage(
+        data=ConversationData(role="user", text=text),
+        metadata=RecordedMessageMetadata(runtime_id=runtime_id, turn_id=turn_id),
+    )
+
+
 class TestRunWorkflowSimple:
     def test_passthrough_single_turn(self) -> None:
-        """Simplest case: UserMessage → LLMReactor → AssistantMessage → done."""
+        """Simplest case: UserMessage -> LLMReactor -> AssistantMessage -> done."""
         agent = FakeAgent([_make_response(output="hello world", run_id="r-1")])
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
         routing = make_llm_routing(reactor)
 
         execution = run_workflow(
-            message=UserMessage(text="hi", runtime_id="rt", turn_id="t1"),
+            message=_user_message("hi", runtime_id="rt", turn_id="t1"),
             decider=_passthrough_decider,
             routing_fn=routing,
         )
@@ -68,13 +98,13 @@ class TestRunWorkflowSimple:
         assert len(execution.recorded_turns) == 1
 
     def test_no_llm_response_returns_empty(self) -> None:
-        """If decider produces no commands → no LLM call → empty execution."""
+        """If decider produces no commands -> no LLM call -> empty execution."""
 
         def noop_decider(msg: Message) -> Sequence[Message]:
             return []
 
         execution = run_workflow(
-            message=UserMessage(text="hi"),
+            message=_user_message("hi"),
             decider=noop_decider,
             routing_fn=lambda cmd: None,
         )
@@ -84,7 +114,7 @@ class TestRunWorkflowSimple:
 
 class TestRunWorkflowWithDomainEvents:
     def test_manage_notes_decider_emits_events(self) -> None:
-        """ManageNotes pattern: LLM responds with tool_calls → decider emits domain events."""
+        """ManageNotes pattern: LLM responds with tool_calls -> decider emits domain events."""
         agent = FakeAgent([
             _make_response(
                 output="Note created",
@@ -103,20 +133,24 @@ class TestRunWorkflowWithDomainEvents:
                     CreatedNote(
                         note_name="test",
                         note_content="content",
-                        source="manage_notes",
-                        runtime_id=msg.runtime_id,
+                        metadata=RecordedMessageMetadata(
+                            runtime_id=msg.metadata.runtime_id,
+                            source="manage_notes",
+                        ),
                     ),
                     NoteUpdated(
                         note_name="test",
                         note_path="/notes/test.md",
-                        source="manage_notes",
-                        runtime_id=msg.runtime_id,
+                        metadata=RecordedMessageMetadata(
+                            runtime_id=msg.metadata.runtime_id,
+                            source="manage_notes",
+                        ),
                     ),
                 ]
             return []
 
         execution = run_workflow(
-            message=UserMessage(text="create note", runtime_id="rt"),
+            message=_user_message("create note", runtime_id="rt"),
             decider=notes_decider,
             routing_fn=routing,
         )
@@ -143,7 +177,7 @@ class TestRunWorkflowMultiTurn:
         routing = make_llm_routing(reactor)
 
         execution = run_workflow(
-            message=UserMessage(text="find something"),
+            message=_user_message("find something"),
             decider=_passthrough_decider,
             routing_fn=routing,
         )
@@ -155,22 +189,21 @@ class TestRunWorkflowMultiTurn:
 
 class TestRunWorkflowOrganizer:
     def test_organizer_transforms_created_note(self) -> None:
-        """Organizer pattern: CreatedNote → format → LLM → response."""
+        """Organizer pattern: CreatedNote -> format -> LLM -> response."""
         agent = FakeAgent([_make_response(output="organized", run_id="r-1")])
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
         routing = make_llm_routing(reactor)
 
         def organizer_decider(msg: Message) -> Sequence[Message]:
             if isinstance(msg, CreatedNote):
-                return [UserMessage(
-                    text=f"Note: {msg.note_name}\n{msg.note_content}",
-                    runtime_id=msg.runtime_id,
+                return [_user_message(
+                    f"Note: {msg.note_name}\n{msg.note_content}",
+                    runtime_id=msg.metadata.runtime_id,
                 )]
             if isinstance(msg, UserMessage) and not isinstance(msg, CreatedNote):
                 return [msg]
             return []
 
-        # CreatedNote is the initial message (not UserMessage)
         from agentic_runtime.messaging.message_stream import InMemoryMessageStream
         from agentic_runtime.messaging.consumer import MessageConsumer
 
@@ -179,11 +212,10 @@ class TestRunWorkflowOrganizer:
         stream.append(CreatedNote(
             note_name="shopping",
             note_content="buy milk",
-            runtime_id="rt",
+            metadata=RecordedMessageMetadata(runtime_id="rt"),
         ))
         consumer.consume(stream, organizer_decider, routing)
 
-        # Verify agent received the formatted text
         assert len(agent.calls) == 1
         assert "shopping" in agent.calls[0]
         assert "buy milk" in agent.calls[0]

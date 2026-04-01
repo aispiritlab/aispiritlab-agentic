@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-NodeType = Literal["agent", "integration", "structural_output"]
+NodeType = Literal["agent", "integration", "structural_output", "provider"]
 
 
 @dataclass(frozen=True, slots=True)

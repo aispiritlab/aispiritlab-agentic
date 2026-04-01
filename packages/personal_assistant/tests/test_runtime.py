@@ -6,10 +6,12 @@ from uuid import UUID
 
 from agentic.agent import AgentResult
 from agentic.image_generation_call import ImageGenerationResult
-from agentic.observability import NoopLLMTracer
+from agentic.observability import NoopLLMTracer, TraceSnapshot
 from agentic.workflow.messages import (
     AssistantMessage,
+    ConversationData,
     Event,
+    RecordedMessageMetadata,
     ToolCallEvent,
     ToolResultMessage,
     TurnCompleted,
@@ -40,6 +42,50 @@ class _TraceTracer(NoopLLMTracer):
     @property
     def current_trace_id(self) -> str | None:
         return "trace-general-1"
+
+
+def _user_message(
+    *,
+    runtime_id: str,
+    domain: str,
+    source: str,
+    text: str | None = None,
+    target: str | None = None,
+    turn_id: str = "",
+    message_id: str = "",
+) -> UserMessage:
+    return UserMessage(
+        data=ConversationData(role="user", text=text),
+        metadata=RecordedMessageMetadata(
+            runtime_id=runtime_id,
+            turn_id=turn_id,
+            message_id=message_id,
+            domain=domain,
+            source=source,
+            target=target,
+        ),
+    )
+
+
+def _created_note(
+    *,
+    runtime_id: str,
+    source: str,
+    note_name: str,
+    note_content: str,
+    turn_id: str = "",
+) -> CreatedNote:
+    return CreatedNote(
+        note_name=note_name,
+        note_content=note_content,
+        metadata=RecordedMessageMetadata(
+            runtime_id=runtime_id,
+            turn_id=turn_id,
+            source=source,
+            domain="manage_notes",
+            target="organizer",
+        ),
+    )
 
 
 def _build_runtime(
@@ -127,7 +173,7 @@ def test_new_runtime_id_uses_uuidv7() -> None:
 def test_given_user_message_when_runtime_handles_then_routes_to_workflow() -> None:
     # given
     runtime = _build_runtime()
-    user_message = UserMessage(
+    user_message = _user_message(
         runtime_id=runtime.runtime_id,
         domain="general",
         source="user",
@@ -139,36 +185,33 @@ def test_given_user_message_when_runtime_handles_then_routes_to_workflow() -> No
 
     # then
     assert reply == "Notatka Projekt dodana."
-    assert len(runtime.bus.messages) == 6
+    assert len(runtime.bus.messages) == 5
 
     turn_started = runtime.bus.messages[0]
     assert isinstance(turn_started, TurnStarted)
-    assert turn_started.domain == "manage_notes"
-    assert turn_started.payload == {"workflow": "manage_notes"}
+    assert turn_started.metadata.domain == "manage_notes"
+    assert turn_started.data == {"workflow": "manage_notes"}
 
     routing_event = runtime.bus.messages[1]
     assert isinstance(routing_event, Event)
-    assert routing_event.name == "workflow_selected"
-    assert routing_event.payload == {"workflow": "manage_notes"}
+    assert routing_event.type == "workflow_selected"
+    assert routing_event.data == {"workflow": "manage_notes"}
 
     targeted_message = runtime.bus.messages[2]
     assert isinstance(targeted_message, UserMessage)
-    assert targeted_message.domain == "manage_notes"
-    assert targeted_message.text == "Dodaj notatkę Projekt"
+    assert targeted_message.metadata.domain == "manage_notes"
+    assert targeted_message.data.text == "Dodaj notatkę Projekt"
 
     assistant_messages = [m for m in runtime.bus.messages if isinstance(m, AssistantMessage)]
-    assert [m.scope for m in assistant_messages] == ["transport", "canonical"]
-    assert [m.text for m in assistant_messages] == [
-        "Notatka Projekt dodana.",
-        "Notatka Projekt dodana.",
-    ]
-    assert assistant_messages[0].message_id == assistant_messages[1].message_id
+    assert len(assistant_messages) == 1
+    assert assistant_messages[0].metadata.scope == "canonical"
+    assert assistant_messages[0].data.text == "Notatka Projekt dodana."
 
     turn_completed = runtime.bus.messages[-1]
     assert isinstance(turn_completed, TurnCompleted)
-    assert turn_completed.status == "success"
-    assert turn_completed.payload["workflow"] == "manage_notes"
-    assert turn_completed.payload["final_message_id"] == assistant_messages[-1].message_id
+    assert turn_completed.metadata.status == "success"
+    assert turn_completed.data["workflow"] == "manage_notes"
+    assert turn_completed.data["final_message_id"] == assistant_messages[-1].metadata.message_id
 
 
 def test_given_fallback_llm_call_when_runtime_handles_then_trace_and_run_id_are_preserved() -> None:
@@ -181,12 +224,12 @@ def test_given_fallback_llm_call_when_runtime_handles_then_trace_and_run_id_are_
             result=AgentResult(
                 content=f"fallback:{text}",
                 run_id="run-fallback-1",
-                trace_id="trace-general-1",
+                trace=TraceSnapshot(trace_id="trace-general-1", session_id=runtime.runtime_id),
             ),
             tool_results=(),
         )
     )
-    user_message = UserMessage(
+    user_message = _user_message(
         runtime_id=runtime.runtime_id,
         domain="general",
         source="user",
@@ -198,18 +241,18 @@ def test_given_fallback_llm_call_when_runtime_handles_then_trace_and_run_id_are_
     assert reply == "fallback:Hej fallback"
     turn_started = runtime.bus.messages[0]
     assert isinstance(turn_started, TurnStarted)
-    assert turn_started.trace_id == "trace-general-1"
+    assert turn_started.metadata.trace_id == "trace-general-1"
 
     targeted_message = runtime.bus.messages[1]
     assert isinstance(targeted_message, UserMessage)
-    assert targeted_message.trace_id == "trace-general-1"
+    assert targeted_message.metadata.trace_id == "trace-general-1"
 
     assistants = [m for m in runtime.bus.messages if isinstance(m, AssistantMessage)]
-    assert assistants[-1].agent_run_id == "run-fallback-1"
+    assert assistants[-1].metadata.agent_run_id == "run-fallback-1"
 
     turn_completed = runtime.bus.messages[-1]
     assert isinstance(turn_completed, TurnCompleted)
-    assert turn_completed.trace_id == "trace-general-1"
+    assert turn_completed.metadata.trace_id == "trace-general-1"
 
 
 def test_given_tuple_reply_when_runtime_handles_then_coerces_to_text() -> None:
@@ -224,7 +267,7 @@ def test_given_tuple_reply_when_runtime_handles_then_coerces_to_text() -> None:
     # then
     assert reply == "Notatka Projekt dodana."
     assistant_messages = [m for m in runtime.bus.messages if isinstance(m, AssistantMessage)]
-    assert assistant_messages[-1].text == "Notatka Projekt dodana."
+    assert assistant_messages[-1].data.text == "Notatka Projekt dodana."
     assert isinstance(runtime.bus.messages[-1], TurnCompleted)
 
 
@@ -301,12 +344,12 @@ def test_runtime_stop_closes_resources_and_is_idempotent(monkeypatch) -> None:
 def test_given_created_note_when_published_then_organizer_handles_it() -> None:
     # given
     runtime = _build_runtime(
-        organizer_handle=lambda message: f"organizer:{message.note_name}:{message.name}",
+        organizer_handle=lambda message: f"organizer:{message.note_name}:{message.type}",
     )
 
     # when
     replies = runtime.bus.publish(
-        CreatedNote(
+        _created_note(
             runtime_id=runtime.runtime_id,
             source="manage_notes",
             note_name="Projekt",
@@ -344,7 +387,7 @@ def test_bus_close_flushes_pending_batch_output_handlers() -> None:
     )
 
     replies = bus.publish(
-        CreatedNote(
+        _created_note(
             runtime_id="runtime-1",
             source="manage_notes",
             note_name="Projekt",
@@ -369,7 +412,7 @@ def test_bus_flush_output_handlers_returns_trailing_batch_results() -> None:
     )
 
     replies = bus.publish(
-        CreatedNote(
+        _created_note(
             runtime_id="runtime-1",
             source="manage_notes",
             note_name="Projekt",
@@ -389,27 +432,22 @@ def test_given_user_command_reset_when_clear_history_then_all_workflows_reset() 
     received_commands: list[tuple[str, str]] = []
 
     runtime.personalize_workflow.handle = lambda message: received_commands.append(
-        ("personalize", message.name)
+        ("personalize", message.type)
     ) or ""
     runtime.note_workflow.handle = lambda message: received_commands.append(
-        ("manage_notes", message.name)
+        ("manage_notes", message.type)
     ) or ""
     runtime.discovery_notes_workflow.handle = lambda message: received_commands.append(
-        ("discovery_notes", message.name)
+        ("discovery_notes", message.type)
     ) or ""
     runtime.sage_workflow.handle = lambda message: received_commands.append(
-        ("sage", message.name)
+        ("sage", message.type)
     ) or ""
     runtime.organizer_workflow.handle = lambda message: received_commands.append(
-        ("organizer", message.name)
+        ("organizer", message.type)
     ) or ""
     runtime.bus.publish(
-        UserMessage(
-            runtime_id=runtime.runtime_id,
-            domain="general",
-            source="user",
-            text="hej",
-        )
+        _user_message(runtime_id=runtime.runtime_id, domain="general", source="user", text="hej")
     )
 
     # when
@@ -564,7 +602,7 @@ def test_multi_turn_tool_messages_publish_in_order() -> None:
             ExecutionTurnRecord(agent_result=turn2_result),
         ),
     )
-    incoming = UserMessage(
+    incoming = _user_message(
         runtime_id="rt-1",
         turn_id="t-1",
         domain="test",
@@ -584,11 +622,11 @@ def test_multi_turn_tool_messages_publish_in_order() -> None:
     assistants = [m for m in runtime.bus.messages if isinstance(m, AssistantMessage)]
 
     assert len(tool_calls) == 1
-    assert tool_calls[0].payload["name"] == "add_note"
+    assert tool_calls[0].data["name"] == "add_note"
     assert len(tool_results) == 1
-    assert tool_results[0].text == "created"
+    assert tool_results[0].data.text == "created"
     assert len(assistants) >= 1
-    assert assistants[-1].text == "Done."
+    assert assistants[-1].data.text == "Done."
 
 
 def test_reply_to_chains_across_turns() -> None:
@@ -615,7 +653,7 @@ def test_reply_to_chains_across_turns() -> None:
             ExecutionTurnRecord(agent_result=turn3_result),
         ),
     )
-    incoming = UserMessage(
+    incoming = _user_message(
         runtime_id="rt-1",
         turn_id="t-1",
         domain="test",
@@ -632,7 +670,7 @@ def test_reply_to_chains_across_turns() -> None:
 
     # First tool_call should reply to user message
     first_tool_call = [m for m in runtime.bus.messages if isinstance(m, ToolCallEvent)][0]
-    assert first_tool_call.reply_to_message_id == "msg-user"
+    assert first_tool_call.metadata.reply_to_message_id == "msg-user"
 
     # Each subsequent tool message should chain reply_to from previous
     all_chained = [
@@ -640,7 +678,7 @@ def test_reply_to_chains_across_turns() -> None:
         if isinstance(m, (ToolCallEvent, ToolResultMessage))
     ]
     for i in range(1, len(all_chained)):
-        assert all_chained[i].reply_to_message_id is not None
+        assert all_chained[i].metadata.reply_to_message_id is not None
 
 
 def test_final_assistant_uses_last_turn_run_id() -> None:
@@ -655,7 +693,7 @@ def test_final_assistant_uses_last_turn_run_id() -> None:
             ExecutionTurnRecord(agent_result=turn2_result),
         ),
     )
-    incoming = UserMessage(
+    incoming = _user_message(
         runtime_id="rt-1",
         turn_id="t-1",
         domain="test",
@@ -671,7 +709,7 @@ def test_final_assistant_uses_last_turn_run_id() -> None:
     )
 
     assistants = [m for m in runtime.bus.messages if isinstance(m, AssistantMessage)]
-    assert assistants[-1].agent_run_id == "run-last"
+    assert assistants[-1].metadata.agent_run_id == "run-last"
 
 
 def test_backward_compat_no_recorded_turns_with_agent_result() -> None:
@@ -682,7 +720,7 @@ def test_backward_compat_no_recorded_turns_with_agent_result() -> None:
         text="Simple.",
         agent_result=agent_result,
     )
-    incoming = UserMessage(
+    incoming = _user_message(
         runtime_id="rt-1",
         turn_id="t-1",
         domain="test",
@@ -699,15 +737,15 @@ def test_backward_compat_no_recorded_turns_with_agent_result() -> None:
 
     assistants = [m for m in runtime.bus.messages if isinstance(m, AssistantMessage)]
     assert len(assistants) >= 1
-    assert assistants[-1].text == "Simple."
-    assert assistants[-1].agent_run_id == "run-single"
+    assert assistants[-1].data.text == "Simple."
+    assert assistants[-1].metadata.agent_run_id == "run-single"
 
 
 def test_backward_compat_text_only_execution() -> None:
     runtime = _build_runtime()
 
     execution = WorkflowExecution(text="Plain text.")
-    incoming = UserMessage(
+    incoming = _user_message(
         runtime_id="rt-1",
         turn_id="t-1",
         domain="test",
@@ -724,6 +762,6 @@ def test_backward_compat_text_only_execution() -> None:
 
     assistants = [m for m in runtime.bus.messages if isinstance(m, AssistantMessage)]
     assert len(assistants) >= 1
-    assert assistants[-1].text == "Plain text."
+    assert assistants[-1].data.text == "Plain text."
     tool_calls = [m for m in runtime.bus.messages if isinstance(m, ToolCallEvent)]
     assert tool_calls == []

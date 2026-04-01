@@ -14,8 +14,7 @@ from agentic_runtime.reactor import LLMReactor
 from agentic_runtime.routing import make_llm_routing
 from agentic_runtime.workflow_runner import run_workflow
 
-from personal_assistant.deciders import make_manage_notes_decider
-from personal_assistant.messaging.events import CreatedNote, NoteUpdated
+from personal_assistant.deciders import build_note_events, make_manage_notes_decider
 from personal_assistant.settings import settings
 
 from .manage_notes_agent import ManageNotesAgent
@@ -53,38 +52,12 @@ class ManageNotesWorkflow(AgenticWorkflow):
             if command is None:
                 return ()
 
-            from .commands import AddNoteCommand, EditNoteCommand
-
-            match command:
-                case AddNoteCommand(note_name=name, note=content):
-                    return (
-                        CreatedNote(
-                            runtime_id=response.runtime_id,
-                            turn_id=response.turn_id,
-                            source=self._agent.description.agent_name,
-                            note_name=name,
-                            note_content=content,
-                        ),
-                        NoteUpdated(
-                            runtime_id=response.runtime_id,
-                            turn_id=response.turn_id,
-                            source=self._agent.description.agent_name,
-                            note_name=name,
-                            note_path=self._agent._resolve_note_path(name),
-                        ),
-                    )
-                case EditNoteCommand(note_name=name):
-                    return (
-                        NoteUpdated(
-                            runtime_id=response.runtime_id,
-                            turn_id=response.turn_id,
-                            source=self._agent.description.agent_name,
-                            note_name=name,
-                            note_path=self._agent._resolve_note_path(name),
-                        ),
-                    )
-                case _:
-                    return ()
+            return build_note_events(
+                command,
+                resolve_note_path=self._agent._resolve_note_path,
+                agent_name=self._agent.description.agent_name,
+                metadata=response.metadata,
+            )
 
         self._workflow = (
             WorkflowBuilder(self._agent.description.agent_name)
@@ -100,9 +73,9 @@ class ManageNotesWorkflow(AgenticWorkflow):
         if workflow is not None:
             return workflow.handle(message)
         if isinstance(message, UserCommand):
-            if message.name == "start":
+            if message.type == "start":
                 return self._agent.start()
-            if message.name == "reset":
+            if message.type == "reset":
                 self._agent.reset()
             return ""
         if not isinstance(message, UserMessage):

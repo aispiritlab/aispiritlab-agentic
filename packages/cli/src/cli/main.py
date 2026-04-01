@@ -125,7 +125,7 @@ def evaluation_group() -> None:
     required=True,
     help=(
         "Evaluation definition in `module:attribute` format, for example "
-        "`agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION`."
+        "`personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION`."
     ),
 )
 @click.option(
@@ -183,6 +183,175 @@ def optimize_prompt_command(
         num_candidates=num_candidates,
         num_trials=num_trials,
         runtime_option=runtime_option,
+    )
+
+
+@evaluation_group.command("sync-mlflow-dataset")
+@click.option(
+    "--definition",
+    default=DEFAULT_NOTES_EVALUATION_DEFINITION,
+    show_default=True,
+    help="Evaluation definition in `module:attribute` format.",
+)
+@click.option(
+    "--dataset-name",
+    required=True,
+    help="MLflow dataset name.",
+)
+@click.option(
+    "--source",
+    type=click.Choice(["hybrid", "synthetic", "traces"], case_sensitive=False),
+    default="hybrid",
+    show_default=True,
+    help="Dataset source strategy.",
+)
+@click.option(
+    "--store-path",
+    type=click.Path(path_type=Path),
+    help="Optional SQLite message store path used for trace-derived records.",
+)
+@click.option(
+    "--runtime-id",
+    default=None,
+    help="Optional runtime/session filter for trace-derived records.",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Optional cap on total records per source type (synthetic or traces).",
+)
+def sync_mlflow_dataset_command(
+    definition: str,
+    dataset_name: str,
+    source: str,
+    store_path: Path | None,
+    runtime_id: str | None,
+    limit: int | None,
+) -> None:
+    try:
+        from evaluation import sync_dataset_from_definition
+    except ImportError as error:
+        click.echo(click.style(f"Import error: {error}", fg="red"), err=True)
+        sys.exit(2)
+
+    try:
+        result = sync_dataset_from_definition(
+            dataset_name=dataset_name,
+            definition_spec=definition,
+            store_path=store_path,
+            runtime_id=runtime_id,
+            source=source,
+            limit=limit,
+        )
+    except Exception as error:
+        click.echo(click.style(f"Error: {error}", fg="red"), err=True)
+        sys.exit(1)
+
+    click.echo(
+        "MLflow dataset synced: "
+        f"{result.dataset_name} ({result.dataset_id}), "
+        f"records={result.record_count}, "
+        f"sources={','.join(result.sources) if result.sources else 'none'}"
+    )
+
+
+@evaluation_group.command("evaluate-mlflow-traces")
+@click.option(
+    "--experiment-id",
+    default=None,
+    help="Optional MLflow experiment id. Defaults to the configured tracing experiment.",
+)
+@click.option(
+    "--max-results",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Maximum traces to load.",
+)
+@click.option(
+    "--filter-string",
+    default=None,
+    help="Optional MLflow trace search filter.",
+)
+@click.option(
+    "--store-path",
+    type=click.Path(path_type=Path),
+    help="Optional SQLite message store path used for stream/trace alignment checks.",
+)
+@click.option(
+    "--summary-output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON path for a compact evaluation summary.",
+)
+def evaluate_mlflow_traces_command(
+    experiment_id: str | None,
+    max_results: int,
+    filter_string: str | None,
+    store_path: Path | None,
+    summary_output: Path | None,
+) -> None:
+    try:
+        from evaluation import evaluate_mlflow_traces, write_evaluation_summary
+    except ImportError as error:
+        click.echo(click.style(f"Import error: {error}", fg="red"), err=True)
+        sys.exit(2)
+
+    try:
+        _, summary = evaluate_mlflow_traces(
+            experiment_id=experiment_id,
+            max_results=max_results,
+            filter_string=filter_string,
+            store_path=store_path,
+        )
+        if summary_output is not None:
+            write_evaluation_summary(summary, summary_output)
+    except Exception as error:
+        click.echo(click.style(f"Error: {error}", fg="red"), err=True)
+        sys.exit(1)
+
+    click.echo(
+        f"MLflow trace evaluation rows={summary.row_count}, "
+        f"metrics={', '.join(summary.metric_keys) if summary.metric_keys else 'none'}"
+    )
+
+
+@evaluation_group.command("evaluate-mlflow-conversations")
+@click.option(
+    "--max-results",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Maximum sessions to load.",
+)
+@click.option(
+    "--summary-output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON path for a compact evaluation summary.",
+)
+def evaluate_mlflow_conversations_command(
+    max_results: int,
+    summary_output: Path | None,
+) -> None:
+    try:
+        from evaluation import evaluate_mlflow_sessions, write_evaluation_summary
+    except ImportError as error:
+        click.echo(click.style(f"Import error: {error}", fg="red"), err=True)
+        sys.exit(2)
+
+    try:
+        _, summary = evaluate_mlflow_sessions(max_results=max_results)
+        if summary_output is not None:
+            write_evaluation_summary(summary, summary_output)
+    except Exception as error:
+        click.echo(click.style(f"Error: {error}", fg="red"), err=True)
+        sys.exit(1)
+
+    click.echo(
+        f"MLflow conversation evaluation rows={summary.row_count}, "
+        f"metrics={', '.join(summary.metric_keys) if summary.metric_keys else 'none'}"
     )
 
 

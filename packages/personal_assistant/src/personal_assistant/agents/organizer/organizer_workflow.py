@@ -8,7 +8,7 @@ from agentic.workflow import WorkflowBuilder
 from agentic.workflow._workflow import AgenticWorkflow
 from registry import Prompts
 
-from agentic.workflow.messages import Message, UserCommand, UserMessage
+from agentic.workflow.messages import ConversationData, Message, RecordedMessageMetadata, UserCommand, UserMessage
 from agentic_runtime.execution import WorkflowExecution
 from agentic_runtime.messaging.consumer import MessageConsumer
 from agentic_runtime.messaging.message_stream import InMemoryMessageStream
@@ -58,12 +58,16 @@ class OrganizerWorkflow(AgenticWorkflow):
                     note_content=message.note_content,
                 )
                 return UserMessage(
-                    text=payload,
-                    domain=message.domain,
-                    runtime_id=message.runtime_id,
-                    turn_id=message.turn_id,
-                    source=message.source,
-                    target=self._agent.description.agent_name,
+                    data=ConversationData(role="user", text=payload),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=message.metadata.runtime_id,
+                        session_id=message.metadata.session_id,
+                        turn_id=message.metadata.turn_id,
+                        domain=message.metadata.domain,
+                        source=message.metadata.source,
+                        target=self._agent.description.agent_name,
+                        trace=message.metadata.trace,
+                    ),
                 )
             if isinstance(message, UserMessage):
                 return message
@@ -84,9 +88,9 @@ class OrganizerWorkflow(AgenticWorkflow):
             return workflow.handle(message)
         logger.info(f"Handling message: {message}")
         if isinstance(message, UserCommand):
-            if message.name == "start":
+            if message.type == "start":
                 return self._agent.start()
-            if message.name == "reset":
+            if message.type == "reset":
                 self._agent.reset()
             return ""
         if isinstance(message, (CreatedNote, UserMessage)):

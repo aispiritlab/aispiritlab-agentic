@@ -10,11 +10,15 @@ from evaluation import (
     Flow,
     Flows,
     ToolScenario,
+    build_conversation_dataset_records,
     build_conversation_scenarios,
+    build_trace_dataset_records,
     build_goldens_from_flows,
     load_evaluation_definition,
+    normalize_definition_spec,
     optimize_prompt_text,
 )
+import evaluation.mlflow_bridge as mlflow_bridge
 from evaluation import notes_prompt_optimization_miprov2 as optimization_module
 
 
@@ -26,6 +30,7 @@ def test_public_api_exports_generic_contracts() -> None:
     assert "ToolScenario" in exported
     assert "EvaluationDefinition" in exported
     assert "load_evaluation_definition" in exported
+    assert "normalize_definition_spec" in exported
     assert "optimize_prompt_text" in exported
 
 
@@ -83,6 +88,87 @@ def test_load_evaluation_definition_resolves_notes_definition() -> None:
     assert definition.name == "notes"
     assert definition.flows is not None
     assert definition.scenarios
+
+
+def test_normalize_definition_spec_maps_legacy_alias() -> None:
+    assert normalize_definition_spec(
+        "agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION"
+    ) == "personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION"
+
+
+def test_build_trace_dataset_records_includes_trace_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        mlflow_bridge,
+        "export_agent_fine_tuning_rows",
+        lambda *args, **kwargs: [
+            {
+                "messages": [
+                    {"role": "system", "content": "You manage notes."},
+                    {"role": "user", "content": "Dodaj notatkę Projekt"},
+                    {"role": "assistant", "content": "Notatka gotowa."},
+                ],
+                "tools": [{"name": "add_note"}],
+                "metadata": {
+                    "runtime_id": "runtime-1",
+                    "session_id": "session-1",
+                    "trace_id": "trace-1",
+                },
+            }
+        ],
+    )
+
+    records = build_trace_dataset_records("/tmp/message_stream.sqlite3")
+
+    assert records == [
+        {
+            "inputs": {
+                "messages": [
+                    {"role": "system", "content": "You manage notes."},
+                    {"role": "user", "content": "Dodaj notatkę Projekt"},
+                ],
+                "tools": [{"name": "add_note"}],
+            },
+            "outputs": "Notatka gotowa.",
+            "expectations": {
+                "final_assistant": {"role": "assistant", "content": "Notatka gotowa."},
+                "tool_count": 1,
+            },
+            "metadata": {
+                "runtime_id": "runtime-1",
+                "session_id": "session-1",
+                "trace_id": "trace-1",
+                "dataset_source": "traces",
+            },
+        }
+    ]
+
+
+def test_build_conversation_dataset_records_marks_synthetic_source() -> None:
+    definition = EvaluationDefinition(
+        name="dummy",
+        scenarios=(
+            ToolScenario(
+                name="scenario",
+                user_message="uzyj narzedzia",
+                tool_name="tool",
+                parameters={"x": "1"},
+            ),
+        ),
+    )
+
+    records = build_conversation_dataset_records(definition)
+
+    assert records[0]["metadata"]["dataset_source"] == "synthetic"
+    assert records[0]["metadata"]["evaluation_definition"] == "dummy"
+
+
+def test_sync_dataset_from_definition_requires_store_path_for_trace_source() -> None:
+    with pytest.raises(ValueError, match="store_path"):
+        mlflow_bridge.sync_dataset_from_definition(
+            dataset_name="notes-traces",
+            definition_spec="personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION",
+            source="traces",
+        )
 
 
 def test_optimize_prompt_text_uses_callback_contract(monkeypatch) -> None:

@@ -6,7 +6,13 @@ from agentic.agent import AgentResult
 from agentic.core_agent import CoreAgentResponse
 from agentic.tools import ToolRunResult
 
-from agentic_runtime.messaging.messages import AssistantMessage, Message, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    Message,
+    RecordedMessageMetadata,
+    UserMessage,
+)
 from agentic_runtime.reactor import LLMReactor, LLMResponse, MultiTurnLLMReactor
 
 
@@ -55,7 +61,7 @@ class TestLLMReactor:
     def test_can_handle_with_text(self) -> None:
         agent = FakeAgent([])
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
-        msg = UserMessage(text="hello")
+        msg = UserMessage(data=ConversationData(role="user", text="hello"))
         assert reactor.can_handle(msg) is True
 
     def test_can_handle_without_text(self) -> None:
@@ -70,23 +76,25 @@ class TestLLMReactor:
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
 
         command = UserMessage(
-            text="hello",
-            domain="test",
-            runtime_id="rt-1",
-            turn_id="turn-1",
-            message_id="msg-1",
+            data=ConversationData(role="user", text="hello"),
+            metadata=RecordedMessageMetadata(
+                domain="test",
+                runtime_id="rt-1",
+                turn_id="turn-1",
+                message_id="msg-1",
+            ),
         )
         result = reactor.invoke(command)
 
         assert isinstance(result, LLMResponse)
         assert isinstance(result, AssistantMessage)  # LLMResponse IS AssistantMessage
-        assert result.text == "world"
-        assert result.domain == "test"
-        assert result.source == "llm"
-        assert result.reply_to_message_id == "msg-1"
-        assert result.runtime_id == "rt-1"
-        assert result.turn_id == "turn-1"
-        assert result.agent_run_id == "run-42"
+        assert result.data.text == "world"
+        assert result.metadata.domain == "test"
+        assert result.metadata.source == "llm"
+        assert result.metadata.reply_to_message_id == "msg-1"
+        assert result.metadata.runtime_id == "rt-1"
+        assert result.metadata.turn_id == "turn-1"
+        assert result.metadata.agent_run_id == "run-42"
 
     def test_invoke_carries_tool_calls(self) -> None:
         tool_calls = [("add_note", {"name": "test", "content": "hello"})]
@@ -94,7 +102,7 @@ class TestLLMReactor:
         agent = FakeAgent([response])
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
 
-        result = reactor.invoke(UserMessage(text="create note"))
+        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="create note")))
         assert isinstance(result, LLMResponse)
         assert result.has_tool_calls is True
         assert result.tool_calls == (("add_note", {"name": "test", "content": "hello"}),)
@@ -104,7 +112,7 @@ class TestLLMReactor:
         agent = FakeAgent([response])
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
 
-        result = reactor.invoke(UserMessage(text="hello"))
+        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="hello")))
         assert isinstance(result, LLMResponse)
         assert result.has_tool_calls is False
         assert result.tool_calls == ()
@@ -114,7 +122,7 @@ class TestLLMReactor:
         agent = FakeAgent([response])
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
 
-        reactor.invoke(UserMessage(text="what is 2+2"))
+        reactor.invoke(UserMessage(data=ConversationData(role="user", text="what is 2+2")))
         assert agent.calls == ["what is 2+2"]
 
     def test_invoke_with_empty_text(self) -> None:
@@ -123,7 +131,7 @@ class TestLLMReactor:
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
 
         result = reactor.invoke(Message())
-        assert result.text == "fallback"
+        assert result.data.text == "fallback"
         assert agent.calls == [""]
 
 
@@ -133,9 +141,9 @@ class TestMultiTurnLLMReactor:
         agent = FakeAgent([response])
         reactor = MultiTurnLLMReactor(agent=agent)  # type: ignore[arg-type]
 
-        result = reactor.invoke(UserMessage(text="question"))
+        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="question")))
         assert isinstance(result, LLMResponse)
-        assert result.text == "answer"
+        assert result.data.text == "answer"
         assert len(agent.calls) == 1
 
     def test_multi_turn_with_tools(self) -> None:
@@ -149,9 +157,9 @@ class TestMultiTurnLLMReactor:
         agent = FakeAgent([first, second])
         reactor = MultiTurnLLMReactor(agent=agent)  # type: ignore[arg-type]
 
-        result = reactor.invoke(UserMessage(text="find something"))
+        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="find something")))
         assert isinstance(result, LLMResponse)
-        assert result.text == "final answer"
+        assert result.data.text == "final answer"
         assert len(agent.calls) == 2
         assert "Tool: search" in agent.calls[1]
 
@@ -166,7 +174,7 @@ class TestMultiTurnLLMReactor:
         agent = FakeAgent([looping] * 5)
         reactor = MultiTurnLLMReactor(agent=agent, max_turns=3)  # type: ignore[arg-type]
 
-        result = reactor.invoke(UserMessage(text="start"))
+        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="start")))
         assert isinstance(result, LLMResponse)
         # 1 initial + 3 tool turns = 4 calls
         assert len(agent.calls) == 4
@@ -179,5 +187,5 @@ class TestMultiTurnLLMReactor:
             return text.replace("<think>", "").replace("</think>", "").strip()
 
         reactor = MultiTurnLLMReactor(agent=agent, post_process=strip_think)  # type: ignore[arg-type]
-        result = reactor.invoke(UserMessage(text="q"))
-        assert result.text == "reasoning answer"
+        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="q")))
+        assert result.data.text == "reasoning answer"

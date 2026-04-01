@@ -3,8 +3,9 @@ from __future__ import annotations
 from agentic.core_agent import CoreAgentic
 from agentic.metadata import Description
 from agentic.models import ModelConfig
-from agentic.prompts import QwenPromptBuilder
 from agentic.providers.provider import ModelProviderType
+
+from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder
 
 _SUMMARIZATION_SYSTEM_PROMPT = (
     "You are a summarization specialist. "
@@ -32,7 +33,10 @@ class SummarizationAgent(CoreAgentic):
     ) -> None:
         super().__init__(
             model_id=model_id,
-            prompt_builder=QwenPromptBuilder(system_prompt=_SUMMARIZATION_SYSTEM_PROMPT),
+            prompt_builder=build_specialized_prompt_builder(
+                system_prompt=_SUMMARIZATION_SYSTEM_PROMPT,
+                model_provider_type=model_provider_type,
+            ),
             config=config or ModelConfig(max_tokens=512, generation_mode="nothinking"),
             model_provider_type=model_provider_type,
         )

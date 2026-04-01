@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, Callable, Protocol
 import uuid
 
@@ -28,19 +27,24 @@ class InMemoryMessageBus:
 
     def _normalize_message(self, message: Message) -> Message:
         updates: dict[str, Any] = {}
-        if not message.event_id:
+        event_id = getattr(message.metadata, "event_id", "")
+        message_id = getattr(message.metadata, "message_id", "")
+        sequence_no = getattr(message.metadata, "sequence_no", None)
+        content_sha256 = getattr(message.metadata, "content_sha256", None)
+        text = message.data.text if hasattr(message.data, "text") else None
+        if not event_id:
             updates["event_id"] = str(uuid.uuid4())
-        if not message.message_id:
+        if not message_id:
             updates["message_id"] = str(uuid.uuid4())
-        if not message.turn_id:
-            updates["turn_id"] = message.runtime_id
-        if message.sequence_no is None:
+        if not message.metadata.turn_id:
+            updates["turn_id"] = message.metadata.runtime_id
+        if sequence_no is None:
             self._sequence_no += 1
             updates["sequence_no"] = self._sequence_no
-        if message.text and not message.content_sha256:
-            updates["content_sha256"] = hash_text(message.text)
+        if text and not content_sha256:
+            updates["content_sha256"] = hash_text(text)
         if updates:
-            return replace(message, **updates)
+            return message.with_metadata(**updates)
         return message
 
     def subscribe(self, handler: MessageHandler) -> None:

@@ -43,13 +43,13 @@ class PersonalizeWorkflow(AgenticWorkflow):
         if workflow is not None:
             return workflow.handle(message)
         if isinstance(message, UserCommand):
-            if message.name == "start":
+            if message.type == "start":
                 return self._agent.start()
-            if message.name == "reset":
+            if message.type == "reset":
                 self._agent.reset()
             return ""
         if isinstance(message, UserMessage):
-            return self._agent.respond(message.text).output
+            return self._agent.respond(message.data.text).output
         return ""
 
     def close(self) -> None:

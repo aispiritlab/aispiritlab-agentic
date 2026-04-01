@@ -6,7 +6,7 @@ from typing import Protocol
 
 import orjson
 
-from agentic_runtime.messaging.messages import Message
+from agentic_runtime.messaging.messages import ConversationData, Message
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +14,7 @@ class MessageRow:
     event_id: str
     message_id: str
     runtime_id: str
+    session_id: str
     turn_id: str
     reply_to_message_id: str | None
     kind: str
@@ -36,6 +37,12 @@ class MessageRow:
     status: str | None
     content_sha256: str | None
     trace_id: str | None
+    span_id: str | None
+    parent_span_id: str | None
+    span_name: str | None
+    span_type: str | None
+    attempt_no: int | None
+    loop_iteration: int | None
     created_at_ns: int
 
 
@@ -43,6 +50,7 @@ class MessageRow:
 class ConversationRecordRow:
     message_id: str
     runtime_id: str
+    session_id: str
     turn_id: str
     reply_to_message_id: str | None
     kind: str
@@ -62,6 +70,12 @@ class ConversationRecordRow:
     status: str | None
     content_sha256: str | None
     trace_id: str | None
+    span_id: str | None
+    parent_span_id: str | None
+    span_name: str | None
+    span_type: str | None
+    attempt_no: int | None
+    loop_iteration: int | None
     created_at_ns: int
 
 
@@ -87,6 +101,33 @@ def _to_payload_json(payload: object) -> bytes | None:
     return orjson.dumps(payload)
 
 
+def _message_role(message: Message) -> str | None:
+    if isinstance(message.data, ConversationData):
+        return message.data.role or None
+    return message.metadata.role or None
+
+
+def _message_name(message: Message) -> str | None:
+    if isinstance(message.data, ConversationData):
+        return message.data.name
+    return message.type or None
+
+
+def _message_text(message: Message) -> str | None:
+    if isinstance(message.data, ConversationData):
+        return message.data.text
+    if isinstance(message.data, dict):
+        text = message.data.get("text")
+        return str(text) if text is not None else None
+    return None
+
+
+def _message_payload(message: Message) -> object:
+    if isinstance(message.data, ConversationData):
+        return message.data.payload
+    return message.data
+
+
 def row_to_conversation_record(row: MessageRow) -> ConversationRecordRow | None:
     if row.scope != "canonical":
         return None
@@ -95,6 +136,7 @@ def row_to_conversation_record(row: MessageRow) -> ConversationRecordRow | None:
     return ConversationRecordRow(
         message_id=row.message_id,
         runtime_id=row.runtime_id,
+        session_id=row.session_id,
         turn_id=row.turn_id,
         reply_to_message_id=row.reply_to_message_id,
         kind=row.kind,
@@ -114,6 +156,12 @@ def row_to_conversation_record(row: MessageRow) -> ConversationRecordRow | None:
         status=row.status,
         content_sha256=row.content_sha256,
         trace_id=row.trace_id,
+        span_id=row.span_id,
+        parent_span_id=row.parent_span_id,
+        span_name=row.span_name,
+        span_type=row.span_type,
+        attempt_no=row.attempt_no,
+        loop_iteration=row.loop_iteration,
         created_at_ns=row.created_at_ns,
     )
 
@@ -124,31 +172,38 @@ class GenericProjection:
 
     def handle(self, event: Message) -> MessageRow:
         return MessageRow(
-            event_id=event.event_id,
-            message_id=event.message_id,
-            runtime_id=event.runtime_id,
-            turn_id=event.turn_id,
-            reply_to_message_id=event.reply_to_message_id,
+            event_id=getattr(event.metadata, "event_id", ""),
+            message_id=getattr(event.metadata, "message_id", ""),
+            runtime_id=event.metadata.runtime_id,
+            session_id=event.metadata.session_id,
+            turn_id=event.metadata.turn_id,
+            reply_to_message_id=event.metadata.reply_to_message_id,
             kind=event.kind,
             event_type=type(event).__name__,
-            role=event.role or None,
-            scope=event.scope,
-            domain=event.domain,
-            source=event.source,
-            target=event.target,
-            name=event.name,
-            text=event.text,
-            payload_json=_to_payload_json(event.payload),
-            sequence_no=event.sequence_no,
-            chunk_index=event.chunk_index,
-            chunk_count=event.chunk_count,
-            tool_call_id=event.tool_call_id,
-            agent_run_id=event.agent_run_id,
-            prompt_name=event.prompt_name,
-            prompt_hash=event.prompt_hash,
-            status=event.status,
-            content_sha256=event.content_sha256,
-            trace_id=event.trace_id,
+            role=_message_role(event),
+            scope=event.metadata.scope,
+            domain=event.metadata.domain,
+            source=event.metadata.source,
+            target=event.metadata.target,
+            name=_message_name(event),
+            text=_message_text(event),
+            payload_json=_to_payload_json(_message_payload(event)),
+            sequence_no=getattr(event.metadata, "sequence_no", None),
+            chunk_index=event.metadata.chunk_index,
+            chunk_count=event.metadata.chunk_count,
+            tool_call_id=event.metadata.tool_call_id,
+            agent_run_id=event.metadata.agent_run_id,
+            prompt_name=event.metadata.prompt_name,
+            prompt_hash=event.metadata.prompt_hash,
+            status=event.metadata.status,
+            content_sha256=getattr(event.metadata, "content_sha256", None),
+            trace_id=event.metadata.trace_id,
+            span_id=event.metadata.span_id,
+            parent_span_id=event.metadata.parent_span_id,
+            span_name=event.metadata.span_name,
+            span_type=event.metadata.span_type,
+            attempt_no=event.metadata.attempt_no,
+            loop_iteration=event.metadata.loop_iteration,
             created_at_ns=time.time_ns(),
         )
 

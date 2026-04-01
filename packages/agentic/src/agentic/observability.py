@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Literal, Mapping, Protocol
+
+logger = logging.getLogger(__name__)
 
 from agentic.models.response import ModelResponse
 
@@ -119,8 +122,68 @@ class MlflowSpanHandle:
 class TracingContext:
     session_id: str = ""
     user_id: str = ""
+    runtime_id: str = ""
+    turn_id: str = ""
+    workflow: str = ""
+    domain: str = ""
     tags: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# TraceSnapshot: active trace/span identity propagated to messages/storage
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TraceSnapshot:
+    session_id: str = ""
+    trace_id: str = ""
+    span_id: str = ""
+    parent_span_id: str = ""
+    span_name: str = ""
+    span_type: str = ""
+
+
+def build_trace_snapshot(
+    trace: TraceSnapshot | None = None,
+    *,
+    session_id: str = "",
+    trace_id: str | None = None,
+    span_id: str | None = None,
+    parent_span_id: str | None = None,
+    span_name: str | None = None,
+    span_type: str | None = None,
+) -> TraceSnapshot | None:
+    resolved_trace_id = trace.trace_id if trace is not None and trace.trace_id else (trace_id or "")
+    resolved_span_id = trace.span_id if trace is not None and trace.span_id else (span_id or "")
+    resolved_parent_span_id = (
+        trace.parent_span_id if trace is not None and trace.parent_span_id else (parent_span_id or "")
+    )
+    resolved_span_name = trace.span_name if trace is not None and trace.span_name else (span_name or "")
+    resolved_span_type = trace.span_type if trace is not None and trace.span_type else (span_type or "")
+    resolved_session_id = trace.session_id if trace is not None and trace.session_id else session_id
+
+    if not any(
+        (
+            resolved_session_id,
+            resolved_trace_id,
+            resolved_span_id,
+            resolved_parent_span_id,
+            resolved_span_name,
+            resolved_span_type,
+        )
+    ):
+        return None
+
+    return TraceSnapshot(
+        session_id=resolved_session_id,
+        trace_id=resolved_trace_id,
+        span_id=resolved_span_id,
+        parent_span_id=resolved_parent_span_id,
+        span_name=resolved_span_name,
+        span_type=resolved_span_type,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +234,9 @@ class LLMTracer(Protocol):
         invoke: Callable[..., ModelResponse],
         **kwargs: Any,
     ) -> ModelResponse: ...
+
+    @property
+    def current_trace(self) -> TraceSnapshot | None: ...
 
     @property
     def current_trace_id(self) -> str | None: ...
@@ -236,6 +302,10 @@ class NoopLLMTracer:
         return invoke()
 
     @property
+    def current_trace(self) -> TraceSnapshot | None:
+        return None
+
+    @property
     def current_trace_id(self) -> str | None:
         return None
 
@@ -268,6 +338,7 @@ class MlflowLLMTracer:
         self._tracking_uri = tracking_uri
         self._content_mode: ContentMode = content_mode
         self._summary_state = threading.local()
+        self._trace_state = threading.local()
         self._mlflow: Any | None = None
         self._span_type_enum: Any | None = None
         try:
@@ -307,6 +378,30 @@ class MlflowLLMTracer:
             stack = []
             self._summary_state.stack = stack
         return stack
+
+    def _session_stack(self) -> list[str]:
+        stack = getattr(self._trace_state, "session_stack", None)
+        if stack is None:
+            stack = []
+            self._trace_state.session_stack = stack
+        return stack
+
+    def _push_session_id(self, session_id: str) -> None:
+        self._session_stack().append(session_id)
+
+    def _pop_session_id(self, session_id: str) -> None:
+        stack = self._session_stack()
+        if stack and stack[-1] == session_id:
+            stack.pop()
+            return
+        try:
+            stack.remove(session_id)
+        except ValueError:
+            logger.warning("Attempted to pop non-existent session_id=%s", session_id)
+
+    def _current_session_id(self) -> str:
+        stack = self._session_stack()
+        return stack[-1] if stack else ""
 
     def _push_summary(self, prefix: str) -> _SummaryFrame:
         frame = _SummaryFrame(prefix=prefix)
@@ -434,6 +529,23 @@ class MlflowLLMTracer:
             return MlflowSpanHandle(span)
         return _NOOP_HANDLE
 
+    def _snapshot_from_span(self, span: Any | None) -> TraceSnapshot | None:
+        if span is None:
+            return None
+        trace_id = getattr(span, "trace_id", None)
+        span_id = getattr(span, "span_id", None)
+        parent_span_id = getattr(span, "parent_id", None)
+        span_name = getattr(span, "name", None)
+        span_type = getattr(span, "span_type", None)
+        return TraceSnapshot(
+            session_id=self._current_session_id(),
+            trace_id="" if trace_id is None else str(trace_id),
+            span_id="" if span_id is None else str(span_id),
+            parent_span_id="" if parent_span_id is None else str(parent_span_id),
+            span_name="" if span_name is None else str(span_name),
+            span_type="" if span_type is None else str(span_type),
+        )
+
     @contextmanager
     def workflow(
         self,
@@ -447,14 +559,15 @@ class MlflowLLMTracer:
         tracing_context: TracingContext | None = None,
     ) -> Iterator[SpanHandle]:
         frame = self._push_summary("agentic.run")
+        effective_session = (
+            tracing_context.session_id
+            if tracing_context and tracing_context.session_id
+            else session_id
+        )
         try:
+            self._push_session_id(effective_session)
             with self._open_span(name, span_type="CHAIN", input=input) as span:
                 if self._mlflow is not None and span is not None:
-                    effective_session = (
-                        tracing_context.session_id
-                        if tracing_context and tracing_context.session_id
-                        else session_id
-                    )
                     effective_user = (
                         tracing_context.user_id
                         if tracing_context and tracing_context.user_id
@@ -469,6 +582,14 @@ class MlflowLLMTracer:
                         trace_metadata.update(_sanitize_tags(tracing_context.metadata))
                     if metadata:
                         trace_metadata.update(_sanitize_tags(metadata))
+                    if tracing_context and tracing_context.runtime_id:
+                        trace_metadata["agentic.runtime_id"] = tracing_context.runtime_id
+                    if tracing_context and tracing_context.turn_id:
+                        trace_metadata["agentic.turn_id"] = tracing_context.turn_id
+                    if tracing_context and tracing_context.workflow:
+                        trace_metadata["agentic.workflow"] = tracing_context.workflow
+                    if tracing_context and tracing_context.domain:
+                        trace_metadata["agentic.domain"] = tracing_context.domain
 
                     effective_tags: dict[str, str] = {}
                     if tracing_context and tracing_context.tags:
@@ -489,6 +610,7 @@ class MlflowLLMTracer:
                     if span is not None:
                         self._apply_summary_attributes(span, frame)
         finally:
+            self._pop_session_id(effective_session)
             self._pop_summary(frame)
             if self.auto_flush:
                 self.flush()
@@ -594,25 +716,36 @@ class MlflowLLMTracer:
             return result
 
     @property
+    def current_trace(self) -> TraceSnapshot | None:
+        if self._mlflow is None:
+            return None
+        try:
+            span = self._mlflow.get_current_active_span()
+        except (AttributeError, RuntimeError, OSError):
+            return None
+        return self._snapshot_from_span(span)
+
+    @property
     def current_trace_id(self) -> str | None:
+        snapshot = self.current_trace
+        if snapshot is not None and snapshot.trace_id:
+            return snapshot.trace_id
         if self._mlflow is None:
             return None
         try:
             span = self._mlflow.get_current_active_span()
             if span is None:
                 return None
-            trace_id = getattr(span, "trace_id", None)
-            if trace_id is not None:
-                return str(trace_id)
             request_id = getattr(span, "request_id", None)
             if request_id is not None:
                 return str(request_id)
-            return None
         except Exception:
             return None
+        return None
 
     def get_trace_url(self) -> str | None:
-        trace_id = self.current_trace_id
+        snapshot = self.current_trace
+        trace_id = snapshot.trace_id if snapshot is not None else self.current_trace_id
         if trace_id is None or self._tracking_uri is None:
             return None
         base = self._tracking_uri.rstrip("/")

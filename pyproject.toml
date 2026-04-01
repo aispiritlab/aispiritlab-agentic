@@ -72,6 +72,7 @@ force-sort-within-sections = true
 markers = [
     "workflow_smoke: live-model workflow smoke tests that validate a single workflow or callback.",
     "agent_e2e_live: runtime-first live end-to-end tests for the full agentic system.",
+    "distributed_resilience: end-to-end resilience tests requiring LLM server (Redis optional).",
 ]
 
 [tool.uv.workspace]

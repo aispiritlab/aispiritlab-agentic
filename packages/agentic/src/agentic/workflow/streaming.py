@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from typing import Iterable
 from uuid import uuid4
 
 from agentic.agent import AgentResult, PromptSnapshot as AgentPromptSnapshot
+from agentic.observability import TraceSnapshot, build_trace_snapshot
 from agentic.tools import ToolRunResult
 
 from agentic.workflow.messages import (
     AssistantMessage,
+    ConversationData,
     Message,
+    RecordedMessageMetadata,
     MessageChunk,
     MessageCompleted,
     MessageStarted,
@@ -26,6 +30,56 @@ def new_message_id() -> str:
 
 def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class TraceContext:
+    trace: TraceSnapshot | None
+    session_id: str
+    trace_id: str | None
+    span_id: str | None
+    parent_span_id: str | None
+    span_name: str | None
+    span_type: str | None
+    attempt_no: int | None
+    loop_iteration: int | None
+
+    def build_snapshot(self) -> TraceSnapshot | None:
+        return build_trace_snapshot(
+            self.trace,
+            session_id=self.session_id,
+            trace_id=self.trace_id,
+            span_id=self.span_id,
+            parent_span_id=self.parent_span_id,
+            span_name=self.span_name,
+            span_type=self.span_type,
+        )
+
+
+def resolve_trace_context(
+    *,
+    incoming: UserMessage,
+    trace: TraceSnapshot | None = None,
+    attempt_no: int | None = None,
+    loop_iteration: int | None = None,
+) -> TraceContext:
+    return TraceContext(
+        trace=trace,
+        session_id=(
+            (trace.session_id if trace else "")
+            or incoming.metadata.session_id
+            or incoming.metadata.runtime_id
+        ),
+        trace_id=(trace.trace_id if trace else "") or incoming.metadata.trace_id,
+        span_id=(trace.span_id if trace else "") or incoming.metadata.span_id,
+        parent_span_id=(
+            (trace.parent_span_id if trace else "") or incoming.metadata.parent_span_id
+        ),
+        span_name=(trace.span_name if trace else "") or incoming.metadata.span_name,
+        span_type=(trace.span_type if trace else "") or incoming.metadata.span_type,
+        attempt_no=attempt_no,
+        loop_iteration=loop_iteration,
+    )
 
 
 def utf8_chunks(text: str, chunk_bytes: int) -> list[str]:
@@ -57,20 +111,29 @@ def build_prompt_snapshot_message(
     agent_name: str,
     snapshot: AgentPromptSnapshot | None,
     agent_run_id: str | None,
+    ctx: TraceContext,
 ) -> PromptSnapshot | None:
     if snapshot is None:
         return None
     return PromptSnapshot(
-        runtime_id=incoming.runtime_id,
-        turn_id=incoming.turn_id,
-        domain=incoming.domain,
-        source=agent_name,
-        target=incoming.source,
-        text=snapshot.text,
-        payload={"tool_schema": list(snapshot.tool_schema)},
-        prompt_name=snapshot.prompt_name,
-        prompt_hash=snapshot.prompt_hash,
-        agent_run_id=agent_run_id,
+        data=ConversationData(
+            role="system",
+            text=snapshot.text,
+            payload={"tool_schema": list(snapshot.tool_schema)},
+        ),
+        metadata=RecordedMessageMetadata(
+            runtime_id=incoming.metadata.runtime_id,
+            turn_id=incoming.metadata.turn_id,
+            domain=incoming.metadata.domain,
+            source=agent_name,
+            target=incoming.metadata.source,
+            prompt_name=snapshot.prompt_name,
+            prompt_hash=snapshot.prompt_hash,
+            agent_run_id=agent_run_id,
+            trace=ctx.build_snapshot(),
+            attempt_no=ctx.attempt_no,
+            loop_iteration=ctx.loop_iteration,
+        ),
     )
 
 
@@ -92,18 +155,31 @@ def build_tool_messages(
         tool_name, parameters = tool_call
         tool_call_id = str(uuid4())
         tool_message_id = new_message_id()
+        tool_trace = tool_results_list[index].trace if index < len(tool_results_list) else agent_result.trace
+        ctx = resolve_trace_context(
+            incoming=incoming,
+            trace=tool_trace,
+            attempt_no=agent_result.attempt_no,
+            loop_iteration=agent_result.loop_iteration,
+        )
         published.append(
             ToolCallEvent(
-                runtime_id=incoming.runtime_id,
-                turn_id=incoming.turn_id,
-                message_id=tool_message_id,
-                reply_to_message_id=reply_to,
-                domain=incoming.domain,
-                source=agent_name,
-                target=incoming.source,
-                payload={"name": tool_name, "parameters": parameters},
-                tool_call_id=tool_call_id,
-                agent_run_id=agent_result.run_id,
+                data={"name": tool_name, "parameters": parameters},
+                metadata=RecordedMessageMetadata(
+                    runtime_id=incoming.metadata.runtime_id,
+                    turn_id=incoming.metadata.turn_id,
+                    message_id=tool_message_id,
+                    reply_to_message_id=reply_to,
+                    domain=incoming.metadata.domain,
+                    source=agent_name,
+                    target=incoming.metadata.source,
+                    role="assistant",
+                    tool_call_id=tool_call_id,
+                    agent_run_id=agent_result.run_id,
+                    trace=ctx.build_snapshot(),
+                    attempt_no=ctx.attempt_no,
+                    loop_iteration=ctx.loop_iteration,
+                ),
             )
         )
         reply_to = tool_message_id
@@ -114,22 +190,27 @@ def build_tool_messages(
         tool_result_message_id = new_message_id()
         published.append(
             ToolResultMessage(
-                runtime_id=incoming.runtime_id,
-                turn_id=incoming.turn_id,
-                message_id=tool_result_message_id,
-                reply_to_message_id=reply_to,
-                domain=incoming.domain,
-                source=tool_name,
-                target=agent_name,
-                name=tool_name,
-                text=tool_result.output,
-                payload={
-                    "name": tool_name,
-                    "parameters": dict(parameters),
-                },
-                tool_call_id=tool_call_id,
-                agent_run_id=agent_result.run_id,
-                content_sha256=hash_text(tool_result.output),
+                data=ConversationData(
+                    role="tool",
+                    name=tool_name,
+                    text=tool_result.output,
+                    payload={"name": tool_name, "parameters": dict(parameters)},
+                ),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=incoming.metadata.runtime_id,
+                    turn_id=incoming.metadata.turn_id,
+                    message_id=tool_result_message_id,
+                    reply_to_message_id=reply_to,
+                    domain=incoming.metadata.domain,
+                    source=tool_name,
+                    target=agent_name,
+                    tool_call_id=tool_call_id,
+                    agent_run_id=agent_result.run_id,
+                    content_sha256=hash_text(tool_result.output),
+                    trace=ctx.build_snapshot(),
+                    attempt_no=ctx.attempt_no,
+                    loop_iteration=ctx.loop_iteration,
+                ),
             )
         )
         reply_to = tool_result_message_id
@@ -146,6 +227,7 @@ def build_assistant_messages(
     agent_run_id: str | None,
     max_inline_bytes: int,
     chunk_bytes: int,
+    ctx: TraceContext,
 ) -> tuple[list[Message], str | None]:
     if not text:
         return [], None
@@ -153,94 +235,94 @@ def build_assistant_messages(
     message_id = new_message_id()
     encoded_length = len(text.encode("utf-8"))
     content_sha = hash_text(text)
+    snapshot = ctx.build_snapshot()
     published: list[Message] = []
 
     if encoded_length > max_inline_bytes:
         chunks = utf8_chunks(text, chunk_bytes)
         published.append(
             MessageStarted(
-                runtime_id=incoming.runtime_id,
-                turn_id=incoming.turn_id,
-                message_id=message_id,
-                reply_to_message_id=reply_to_message_id,
-                domain=incoming.domain,
-                source=agent_name,
-                target=incoming.source,
-                role="assistant",
-                payload={
-                    "logical_kind": "assistant_message",
-                    "chunk_count": len(chunks),
-                    "total_bytes": encoded_length,
-                },
-                agent_run_id=agent_run_id,
-                content_sha256=content_sha,
+                data={"logical_kind": "assistant_message", "chunk_count": len(chunks), "total_bytes": encoded_length},
+                metadata=RecordedMessageMetadata(
+                    runtime_id=incoming.metadata.runtime_id,
+                    turn_id=incoming.metadata.turn_id,
+                    message_id=message_id,
+                    reply_to_message_id=reply_to_message_id,
+                    domain=incoming.metadata.domain,
+                    source=agent_name,
+                    target=incoming.metadata.source,
+                    scope="transport",
+                    role="assistant",
+                    agent_run_id=agent_run_id,
+                    content_sha256=content_sha,
+                    trace=snapshot,
+                    attempt_no=ctx.attempt_no,
+                    loop_iteration=ctx.loop_iteration,
+                ),
             )
         )
         for index, chunk in enumerate(chunks):
             published.append(
                 MessageChunk(
-                    runtime_id=incoming.runtime_id,
-                    turn_id=incoming.turn_id,
-                    message_id=message_id,
-                    reply_to_message_id=reply_to_message_id,
-                    domain=incoming.domain,
-                    source=agent_name,
-                    target=incoming.source,
-                    role="assistant",
-                    text=chunk,
-                    chunk_index=index,
-                    chunk_count=len(chunks),
-                    agent_run_id=agent_run_id,
+                    data=ConversationData(role="assistant", text=chunk),
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=incoming.metadata.runtime_id,
+                        turn_id=incoming.metadata.turn_id,
+                        message_id=message_id,
+                        reply_to_message_id=reply_to_message_id,
+                        domain=incoming.metadata.domain,
+                        source=agent_name,
+                        target=incoming.metadata.source,
+                        scope="transport",
+                        role="assistant",
+                        chunk_index=index,
+                        chunk_count=len(chunks),
+                        agent_run_id=agent_run_id,
+                        trace=snapshot,
+                        attempt_no=ctx.attempt_no,
+                        loop_iteration=ctx.loop_iteration,
+                    ),
                 )
             )
         published.append(
             MessageCompleted(
-                runtime_id=incoming.runtime_id,
-                turn_id=incoming.turn_id,
-                message_id=message_id,
-                reply_to_message_id=reply_to_message_id,
-                domain=incoming.domain,
-                source=agent_name,
-                target=incoming.source,
-                role="assistant",
-                payload={
-                    "chunk_count": len(chunks),
-                    "total_bytes": encoded_length,
-                },
-                agent_run_id=agent_run_id,
-                content_sha256=content_sha,
-            )
-        )
-    else:
-        published.append(
-            AssistantMessage(
-                runtime_id=incoming.runtime_id,
-                turn_id=incoming.turn_id,
-                message_id=message_id,
-                reply_to_message_id=reply_to_message_id,
-                domain=incoming.domain,
-                source=agent_name,
-                target=incoming.source,
-                role="assistant",
-                scope="transport",
-                text=text,
-                agent_run_id=agent_run_id,
-                content_sha256=content_sha,
+                data={"chunk_count": len(chunks), "total_bytes": encoded_length},
+                metadata=RecordedMessageMetadata(
+                    runtime_id=incoming.metadata.runtime_id,
+                    turn_id=incoming.metadata.turn_id,
+                    message_id=message_id,
+                    reply_to_message_id=reply_to_message_id,
+                    domain=incoming.metadata.domain,
+                    source=agent_name,
+                    target=incoming.metadata.source,
+                    scope="transport",
+                    role="assistant",
+                    agent_run_id=agent_run_id,
+                    content_sha256=content_sha,
+                    trace=snapshot,
+                    attempt_no=ctx.attempt_no,
+                    loop_iteration=ctx.loop_iteration,
+                ),
             )
         )
 
     published.append(
         AssistantMessage(
-            runtime_id=incoming.runtime_id,
-            turn_id=incoming.turn_id,
-            message_id=message_id,
-            reply_to_message_id=reply_to_message_id,
-            domain=incoming.domain,
-            source=agent_name,
-            target=incoming.source,
-            text=text,
-            agent_run_id=agent_run_id,
-            content_sha256=content_sha,
+            data=ConversationData(role="assistant", text=text),
+            metadata=RecordedMessageMetadata(
+                runtime_id=incoming.metadata.runtime_id,
+                turn_id=incoming.metadata.turn_id,
+                message_id=message_id,
+                reply_to_message_id=reply_to_message_id,
+                domain=incoming.metadata.domain,
+                source=agent_name,
+                target=incoming.metadata.source,
+                agent_run_id=agent_run_id,
+                content_sha256=content_sha,
+                trace=snapshot,
+                attempt_no=ctx.attempt_no,
+                loop_iteration=ctx.loop_iteration,
+            ),
         )
     )
     return published, message_id

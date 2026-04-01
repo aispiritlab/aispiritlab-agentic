@@ -10,7 +10,9 @@ from personal_assistant.deciders import (
 )
 from agentic.workflow.messages import (
     AssistantMessage,
+    ConversationData,
     Event,
+    RecordedMessageMetadata,
     UserMessage,
 )
 from personal_assistant.messaging.events import CreatedNote, NoteUpdated
@@ -19,36 +21,36 @@ from agentic_runtime.reactor import LLMResponse
 
 class TestPassthroughDecider:
     def test_user_message_passes_through(self) -> None:
-        msg = UserMessage(text="hello")
+        msg = UserMessage(data=ConversationData(role="user", text="hello"))
         result = passthrough_decider(msg)
         assert len(result) == 1
         assert result[0] == msg
 
     def test_assistant_message_terminates(self) -> None:
-        msg = AssistantMessage(text="response")
+        msg = AssistantMessage(data=ConversationData(role="assistant", text="response"))
         result = passthrough_decider(msg)
         assert len(result) == 0
 
     def test_event_terminates(self) -> None:
-        msg = Event(name="something")
+        msg = Event(type="something")
         result = passthrough_decider(msg)
         assert len(result) == 0
 
     def test_llm_response_terminates(self) -> None:
-        msg = LLMResponse(text="done")
+        msg = LLMResponse(data=ConversationData(role="assistant", text="done"))
         result = passthrough_decider(msg)
         assert len(result) == 0
 
 
 class TestSageDecider:
     def test_user_message_passes_through(self) -> None:
-        msg = UserMessage(text="question")
+        msg = UserMessage(data=ConversationData(role="user", text="question"))
         result = sage_decider(msg)
         assert len(result) == 1
         assert result[0] == msg
 
     def test_llm_response_terminates(self) -> None:
-        msg = LLMResponse(text="answer")
+        msg = LLMResponse(data=ConversationData(role="assistant", text="answer"))
         result = sage_decider(msg)
         assert len(result) == 0
 
@@ -70,7 +72,7 @@ class TestManageNotesDecider:
             toolsets=FakeToolsets({}),  # type: ignore[arg-type]
             resolve_note_path=lambda name: f"/notes/{name}.md",
         )
-        msg = UserMessage(text="create note")
+        msg = UserMessage(data=ConversationData(role="user", text="create note"))
         result = decider(msg)
         assert len(result) == 1
         assert result[0] == msg
@@ -86,10 +88,9 @@ class TestManageNotesDecider:
             agent_name="manage_notes",
         )
         msg = LLMResponse(
-            text="note created",
+            data=ConversationData(role="assistant", text="note created"),
             tool_calls=(("add_note", {"note_name": "test", "note": "content"}),),
-            runtime_id="rt-1",
-            turn_id="turn-1",
+            metadata=RecordedMessageMetadata(runtime_id="rt-1", turn_id="turn-1"),
         )
         result = decider(msg)
 
@@ -97,8 +98,8 @@ class TestManageNotesDecider:
         assert isinstance(result[0], CreatedNote)
         assert result[0].note_name == "test"
         assert result[0].note_content == "content"
-        assert result[0].runtime_id == "rt-1"
-        assert result[0].source == "manage_notes"
+        assert result[0].metadata.runtime_id == "rt-1"
+        assert result[0].metadata.source == "manage_notes"
 
         assert isinstance(result[1], NoteUpdated)
         assert result[1].note_name == "test"
@@ -114,10 +115,9 @@ class TestManageNotesDecider:
             resolve_note_path=lambda name: f"/notes/{name}.md",
         )
         msg = LLMResponse(
-            text="note updated",
+            data=ConversationData(role="assistant", text="note updated"),
             tool_calls=(("edit_note", {"note_name": "existing"}),),
-            runtime_id="rt-1",
-            turn_id="turn-1",
+            metadata=RecordedMessageMetadata(runtime_id="rt-1", turn_id="turn-1"),
         )
         result = decider(msg)
 
@@ -132,7 +132,7 @@ class TestManageNotesDecider:
             resolve_note_path=lambda name: "",
         )
         msg = LLMResponse(
-            text="something",
+            data=ConversationData(role="assistant", text="something"),
             tool_calls=(("unknown", {}),),
         )
         result = decider(msg)
@@ -143,7 +143,7 @@ class TestManageNotesDecider:
             toolsets=FakeToolsets({}),  # type: ignore[arg-type]
             resolve_note_path=lambda name: "",
         )
-        msg = LLMResponse(text="just text")
+        msg = LLMResponse(data=ConversationData(role="assistant", text="just text"))
         result = decider(msg)
         assert len(result) == 0
 
@@ -154,27 +154,31 @@ class TestOrganizerDecider:
         msg = CreatedNote(
             note_name="shopping",
             note_content="buy milk",
-            runtime_id="rt-1",
-            turn_id="turn-1",
-            source="manage_notes",
+            metadata=RecordedMessageMetadata(
+                runtime_id="rt-1",
+                turn_id="turn-1",
+                source="manage_notes",
+                domain="manage_notes",
+                target="organizer",
+            ),
         )
         result = decider(msg)
 
         assert len(result) == 1
         assert isinstance(result[0], UserMessage)
-        assert "shopping" in result[0].text
-        assert "buy milk" in result[0].text
-        assert result[0].runtime_id == "rt-1"
+        assert "shopping" in (result[0].data.text or "")
+        assert "buy milk" in (result[0].data.text or "")
+        assert result[0].metadata.runtime_id == "rt-1"
 
     def test_user_message_passes_through(self) -> None:
         decider = make_organizer_decider()
-        msg = UserMessage(text="organize this")
+        msg = UserMessage(data=ConversationData(role="user", text="organize this"))
         result = decider(msg)
         assert len(result) == 1
         assert result[0] == msg
 
     def test_llm_response_terminates(self) -> None:
         decider = make_organizer_decider()
-        msg = LLMResponse(text="organized")
+        msg = LLMResponse(data=ConversationData(role="assistant", text="organized"))
         result = decider(msg)
         assert len(result) == 0
