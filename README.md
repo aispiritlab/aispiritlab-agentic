@@ -152,3 +152,11 @@ Settings are loaded from environment variables or `.env` file. Key settings:
 | `API_BASE_URL` | `http://localhost:1234` | LLM API endpoint |
 | `AGENTIC_TRANSPORT` | `in_memory` | `in_memory` or `redis_streams` |
 | `CHAT_SERVER_PORT` | `7860` | Gradio server port |
+
+
+## Acknowledgements
+
+The communication in agentic runtime is inspired by [Emmett](https://github.com/event-driven-io/emmett) by
+[@oskardudycz](https://github.com/oskardudycz) — a perfect example of event-driven
+messaging done right. Thank you for the excellent reference that shaped the foundation
+of this agentic SDK.
