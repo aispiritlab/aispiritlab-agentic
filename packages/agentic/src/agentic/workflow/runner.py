@@ -1,4 +1,4 @@
-"""Workflow runner — bridges Consumer + Decider + Reactor to WorkflowExecution.
+"""Workflow runner — bridges Consumer + MessageRouter + Reactor to WorkflowExecution.
 
 Runs a workflow through the MessageConsumer and builds a WorkflowExecution
 from the resulting stream, preserving backward compatibility with the existing
@@ -10,12 +10,12 @@ from agentic.workflow.consumer import ConsumerConfig, MessageConsumer
 from agentic.workflow.execution import ExecutionTurnRecord, WorkflowExecution
 from agentic.workflow.message_stream import InMemoryMessageStream
 from agentic.workflow.messages import ConversationData, Message, UserMessage
-from agentic.workflow.reactor import Decider, LLMResponse, TechnicalRoutingFn
+from agentic.workflow.reactor import LLMResponse, MessageRouter, TechnicalRoutingFn
 
 
 def run_workflow(
     message: UserMessage,
-    decider: Decider,
+    decider: MessageRouter,
     routing_fn: TechnicalRoutingFn,
     *,
     config: ConsumerConfig | None = None,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+import uuid
 
 from redis import Redis
 from redis.exceptions import ResponseError
@@ -16,6 +17,21 @@ class ConsumedRecord:
     stream: str
     entry_id: str
     record: object
+
+
+def normalize_distributed_message(message: Message) -> Message:
+    updates: dict[str, Any] = {}
+    event_id = getattr(message.metadata, "event_id", "")
+    message_id = getattr(message.metadata, "message_id", "")
+    if not event_id:
+        updates["event_id"] = str(uuid.uuid4())
+    if not message_id:
+        updates["message_id"] = str(uuid.uuid4())
+    if not message.metadata.turn_id and message.metadata.runtime_id:
+        updates["turn_id"] = message.metadata.runtime_id
+    if updates:
+        return message.with_metadata(**updates)
+    return message
 
 
 class RedisStreamsTransport:
@@ -56,12 +72,13 @@ class RedisStreamsTransport:
         )
 
     def publish_message(self, message: Message) -> str:
-        if not message.metadata.target:
+        normalized = normalize_distributed_message(message)
+        if not normalized.metadata.target:
             raise ValueError("Distributed messages must have a target")
 
         return self._client.xadd(
-            self.message_stream(message.metadata.target),
-            {"payload": serialize_record(message)},
+            self.message_stream(normalized.metadata.target),
+            {"payload": serialize_record(normalized)},
         )
 
     def last_message_id(self, target: str) -> str:

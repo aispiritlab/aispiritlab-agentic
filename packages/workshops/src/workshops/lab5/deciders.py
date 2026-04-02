@@ -1,20 +1,20 @@
-"""Deciders — pure routing logic for Image Summary and Art Writer workflows.
+"""Message routers for Image Summary and Art Writer workflows.
 
-Each decider takes a Message and returns commands/events to append to the stream.
-Deciders decide WHAT happens, not HOW.
+Each router takes a Message and returns commands/events to append to the stream.
+Routers decide WHAT happens, not HOW.
 """
 from __future__ import annotations
 
 from typing import Callable, Sequence
 
-from agentic.workflow.messages import Message, UserMessage
-from agentic.workflow.reactor import Decider, LLMResponse
+from agentic.workflow.messages import Message, RecordedMessageMetadata, UserMessage
+from agentic.workflow.reactor import LLMResponse, MessageRouter
 
 from .messages import ImageDescribed, ImageMessage
 
 
-def make_image_decider(image_path: str = "") -> Decider:
-    """Create an image decider that remembers the image_path for the ImageDescribed event.
+def make_image_decider(image_path: str = "") -> MessageRouter:
+    """Create an image router that remembers the image_path for the ImageDescribed event.
 
     ImageMessage -> [ImageMessage]  (route to VLM reactor)
     UserMessage  -> [UserMessage]   (route to VLM reactor, no image)
@@ -32,9 +32,11 @@ def make_image_decider(image_path: str = "") -> Decider:
         if isinstance(msg, LLMResponse):
             return [
                 ImageDescribed(
-                    runtime_id=msg.runtime_id,
-                    turn_id=msg.turn_id,
-                    source="image_summary",
+                    metadata=RecordedMessageMetadata(
+                        runtime_id=msg.metadata.runtime_id,
+                        turn_id=msg.metadata.turn_id,
+                        source="image_summary",
+                    ),
                     image_path=captured_path,
                     description=msg.text or "",
                 )

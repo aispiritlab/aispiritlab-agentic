@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
+from agentic.workflow import SQLiteEventStore
 from agentic_runtime.distributed.client import DistributedChatClient
 from agentic_runtime.distributed.registry import AgentSnapshot, RedisServiceRegistry
 from agentic_runtime.distributed.transport import RedisStreamsTransport
@@ -88,7 +89,9 @@ class AgenticServiceDiscovery:
     ) -> DistributedService:
         """Create a ``DistributedService`` wired to this discovery instance."""
         from agentic_runtime.distributed.service import DistributedService
+        from agentic_runtime.settings import settings
 
+        event_store = SQLiteEventStore(settings.event_store_path) if settings.event_store_path else None
         return DistributedService(
             agent_name=name,
             capabilities=capabilities,
@@ -98,6 +101,7 @@ class AgenticServiceDiscovery:
             heartbeat_seconds=heartbeat_seconds,
             close_hook=close_hook,
             min_idle_ms=min_idle_ms,
+            event_store=event_store,
         )
 
     def create_client(

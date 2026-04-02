@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     model_name: str = "Qwen/Qwen3.5-4B" # "google/gemma-3-4b-it" # google/gemma-3-1b-it for fine tuning
     orchestration_model_name: str = "Qwen/Qwen3.5-2B" # "google/gemma-3-4b-it" # google/gemma-3-1b-it for fine tuning
-    thinkink_model: str = "Qwen/Qwen3.5-9B"
+    thinking_model: str = "Qwen/Qwen3.5-9B"
     visual_model: str = "lmstudio-community/Qwen3-VL-4B-Thinking-MLX-8bit"
     image_model_name: str = "flux2-klein-9b"
     image_model_quantize: int = 8
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     image_height: int = 1024
     image_steps: int = 4
     image_output_dir: str | None = None
+    event_store_path: str | None = None
     message_store_path: str | None = None
     message_store_batch_size: int = 64
     message_store_flush_interval_seconds: float = 0.05

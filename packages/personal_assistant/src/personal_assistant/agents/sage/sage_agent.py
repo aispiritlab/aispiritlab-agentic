@@ -28,7 +28,7 @@ class SageAgent(CoreAgentic):
         "Jaki temat chcesz przeanalizować?"
     )
     _EMPTY_MESSAGE_RESPONSE = "Opisz decyzję, którą chcesz podjąć."
-    _model_provider = ModelProvider(settings.thinkink_model)
+    _model_provider = ModelProvider(settings.thinking_model)
 
     def start(self) -> str:
         self._agent.history = History()

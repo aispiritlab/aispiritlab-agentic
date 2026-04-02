@@ -46,6 +46,7 @@ Environment variable names follow the uppercase field names used by `pydantic-se
 
 | Variable | Type | Default | Used by | Notes |
 | --- | --- | --- | --- | --- |
+| `EVENT_STORE_PATH` | `str \| null` | `None` | distributed runtime, durable workflows | Optional SQLite event-store path for durable workflow streams and processor checkpoints. |
 | `MESSAGE_STORE_PATH` | `str \| null` | `None` | runtime | Optional message store path. |
 | `MESSAGE_STORE_BATCH_SIZE` | `int` | `64` | runtime | Batch size for persisted message writes. |
 | `MESSAGE_STORE_FLUSH_INTERVAL_SECONDS` | `float` | `0.05` | runtime | Flush interval for message persistence. |
@@ -133,5 +134,7 @@ LAB6_SUMMARY_TOTAL_CHARS=6000
   configuration.
 - `AGENT_SERVICE_NAME` is empty by default because it only makes sense for a dedicated service
   process.
+- `EVENT_STORE_PATH` only affects the durable workflow stream used by the distributed runtime. It
+  is separate from the message/audit store used for observability and fine-tuning exports.
 - The workshop docs focus on runtime and lab configuration. Evaluation-only and dataset-only env
   toggles elsewhere in the repo are intentionally out of scope here.

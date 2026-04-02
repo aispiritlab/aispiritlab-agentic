@@ -18,8 +18,8 @@ class Reactor(Protocol):
     def invoke(self, command: Message) -> Message: ...
 
 
-Decider = Callable[[Message], Sequence[Message]]
-"""Workflow archetype: przyjmuje wiadomosc, zwraca liste komend/eventow do streama."""
+MessageRouter = Callable[[Message], Sequence[Message]]
+"""Stateless message router: takes a message, returns commands/events for the stream."""
 
 TechnicalRoutingFn = Callable[[Message], Reactor | None]
 """Mapowanie komend na Reactors: przyjmuje komende, zwraca ktory Reactor obsluguje."""
@@ -27,7 +27,7 @@ TechnicalRoutingFn = Callable[[Message], Reactor | None]
 
 @dataclass(frozen=True, kw_only=True)
 class LLMResponse(AssistantMessage):
-    """Response from LLM with tool execution details for Decider inspection."""
+    """Response from LLM with tool execution details for MessageRouter inspection."""
 
     kind: str = "llm_response"
     tool_calls: tuple[tuple[str, dict[str, Any]], ...] = ()

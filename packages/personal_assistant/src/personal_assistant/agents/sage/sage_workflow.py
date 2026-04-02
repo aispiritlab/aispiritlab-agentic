@@ -23,7 +23,7 @@ class SageWorkflow(AgenticWorkflow):
         self.context = kwargs.pop("context", None)
         self.inputs = kwargs.pop("inputs", [])
         self._agent = SageAgent(
-            model_id=settings.thinkink_model,
+            model_id=settings.thinking_model,
             prompt_builder=QwenPromptBuilder(external_prompt_name=Prompts.SAGE),
             tracer=tracer,
             **kwargs,

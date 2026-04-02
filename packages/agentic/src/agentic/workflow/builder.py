@@ -10,7 +10,7 @@ from agentic.workflow.consumer import ConsumerConfig
 from agentic.workflow.execution import WorkflowExecution
 from agentic.workflow.messages import Message, UserCommand, UserMessage
 from agentic.workflow.reactor import (
-    Decider,
+    MessageRouter,
     LLMReactor,
     LLMResponse,
     MultiTurnLLMReactor,
@@ -38,7 +38,7 @@ class ConfiguredWorkflow(AgenticWorkflow):
     description: Description
     inputs: tuple[str, ...]
     _routing_fn: TechnicalRoutingFn
-    _decider: Decider
+    _decider: MessageRouter
     _input_mapper: InputMapper
     _config: ConsumerConfig | None = None
     _on_start: StartHook | None = None
@@ -80,7 +80,7 @@ class WorkflowBuilder:
         self._reactor_max_turns = 10
         self._input_mapper: InputMapper | None = None
         self._event_emitter: ResponseEventEmitter | None = None
-        self._decider: Decider | None = None
+        self._decider: MessageRouter | None = None
         self._config: ConsumerConfig | None = None
         self._on_start: StartHook | None = None
         self._on_reset: ResetHook | None = None
@@ -133,7 +133,7 @@ class WorkflowBuilder:
         self._event_emitter = emitter
         return self
 
-    def decider(self, decider: Decider) -> WorkflowBuilder:
+    def decider(self, decider: MessageRouter) -> WorkflowBuilder:
         self._decider = decider
         return self
 
@@ -202,7 +202,7 @@ class WorkflowBuilder:
             )
         raise ValueError(f"Unsupported reactor mode: {self._reactor_mode}")
 
-    def _resolve_decider(self) -> Decider:
+    def _resolve_decider(self) -> MessageRouter:
         if self._decider is not None:
             return self._decider
         if self._event_emitter is None:

@@ -10,7 +10,7 @@ from typing import Any
 from agentic_runtime.distributed.contracts import AgentHeartbeat, AgentRegistration
 from agentic_runtime.distributed.registry import AgentSnapshot
 from agentic_runtime.distributed.serialization import deserialize_record, serialize_record
-from agentic_runtime.distributed.transport import ConsumedRecord
+from agentic_runtime.distributed.transport import ConsumedRecord, normalize_distributed_message
 from agentic_runtime.messaging.messages import Message
 
 
@@ -47,10 +47,11 @@ class InMemoryTransport:
         return f"{self._prefix}:messages:{resolved_target}"
 
     def publish_message(self, message: Message) -> str:
-        if not message.metadata.target:
+        normalized = normalize_distributed_message(message)
+        if not normalized.metadata.target:
             raise ValueError("Distributed messages must have a target")
-        serialized = serialize_record(message)
-        stream = self.message_stream(message.metadata.target)
+        serialized = serialize_record(normalized)
+        stream = self.message_stream(normalized.metadata.target)
         with self._condition:
             self._entry_counter += 1
             entry_id = f"{self._entry_counter}-0"

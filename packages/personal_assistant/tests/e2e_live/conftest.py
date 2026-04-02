@@ -246,7 +246,7 @@ def agent_e2e_live_model_ready(agent_e2e_live_enabled):
     for model_name in {
         settings.model_name,
         settings.orchestration_model_name,
-        settings.thinkink_model,
+        settings.thinking_model,
     }:
         _ensure_model_available(model_name)
 

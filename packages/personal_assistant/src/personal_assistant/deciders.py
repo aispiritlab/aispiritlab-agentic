@@ -1,7 +1,7 @@
-"""Deciders — Workflow archetype functions.
+"""Message routers for workflow orchestration.
 
-Each decider takes a Message from the stream and returns commands/events to append.
-Deciders are pure routing logic: they decide WHAT happens, not HOW.
+Each router takes a Message from the stream and returns commands/events to append.
+Routers are pure workflow logic: they decide WHAT happens, not HOW.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from agentic.prompts import PromptTemplate
 from agentic.tools import Command, Toolsets
 
 from agentic.workflow.messages import ConversationData, Message, RecordedMessageMetadata, UserMessage
-from agentic_runtime.reactor import Decider, LLMResponse
+from agentic_runtime.reactor import LLMResponse, MessageRouter
 
 from personal_assistant.messaging.events import CreatedNote, NoteUpdated
 
@@ -83,7 +83,7 @@ def build_note_events(
 
 
 def passthrough_decider(msg: Message) -> Sequence[Message]:
-    """Simplest decider: UserMessage passes through to LLM, everything else terminates.
+    """Simplest message router: UserMessage passes through to LLM, everything else terminates.
 
     Used by: Personalize, DiscoveryNotes.
     """
@@ -96,8 +96,8 @@ def make_manage_notes_decider(
     toolsets: Toolsets,
     resolve_note_path: Callable[[str], str],
     agent_name: str = "manage_notes",
-) -> Decider:
-    """Decider for ManageNotes: extracts domain events from LLM tool calls.
+) -> MessageRouter:
+    """Message router for ManageNotes: extracts domain events from LLM tool calls.
 
     UserMessage → [UserMessage] (pass to LLM)
     LLMResponse with tool_calls → [CreatedNote, NoteUpdated, ...] (domain events)
@@ -126,8 +126,8 @@ def make_manage_notes_decider(
     return decider
 
 
-def make_organizer_decider() -> Decider:
-    """Decider for Organizer: handles CreatedNote and UserMessage.
+def make_organizer_decider() -> MessageRouter:
+    """Message router for Organizer: handles CreatedNote and UserMessage.
 
     CreatedNote → [UserMessage with formatted payload]
     UserMessage → [UserMessage] (pass through)
@@ -169,7 +169,7 @@ def make_organizer_decider() -> Decider:
 
 
 def sage_decider(msg: Message) -> Sequence[Message]:
-    """Decider for Sage: passes UserMessage to MultiTurnLLMReactor.
+    """Message router for Sage: passes UserMessage to MultiTurnLLMReactor.
 
     Multi-turn tool cycle is handled by MultiTurnLLMReactor internally.
     """

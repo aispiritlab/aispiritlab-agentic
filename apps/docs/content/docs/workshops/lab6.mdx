@@ -35,6 +35,9 @@ graph LR
 - The **summary** service compacts the result set and writes the final answer in Polish with a
   `Źródła` section.
 - Service discovery uses capabilities, heartbeats, and liveness TTL checks.
+- Before a service acks a consumed Redis record, it persists the input and outputs in a durable
+  workflow stream. Redelivered inputs can then replay recorded outputs instead of re-executing the
+  handler.
 
 The concrete service names are:
 

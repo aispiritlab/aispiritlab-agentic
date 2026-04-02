@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 from collections.abc import Callable, Sequence
 import os
 import socket
@@ -10,7 +8,10 @@ from typing import TYPE_CHECKING
 
 from structlog import get_logger
 
+from agentic.workflow import EventStore, SQLiteEventStore
+from agentic.workflow.event_store import ConcurrencyConflictError
 from agentic_runtime.distributed.contracts import AgentHeartbeat, AgentRegistration
+from agentic_runtime.distributed.transport import normalize_distributed_message
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
     ConversationData,
@@ -40,6 +41,7 @@ class DistributedService:
         heartbeat_seconds: float = 5.0,
         close_hook: CloseHook | None = None,
         min_idle_ms: int = 5_000,
+        event_store: EventStore | None = None,
     ) -> None:
         self._agent_name = agent_name
         self._capabilities = capabilities
@@ -51,6 +53,7 @@ class DistributedService:
         self._heartbeat_seconds = heartbeat_seconds
         self._close_hook = close_hook
         self._min_idle_ms = min_idle_ms
+        self._event_store = event_store
         self._group = agent_name
         self._consumer_name = f"{socket.gethostname()}-{os.getpid()}"
         self._stop_event = threading.Event()
@@ -129,11 +132,27 @@ class DistributedService:
             self._transport.ack(stream, self._group, entry_id)
             return
 
-        try:
-            responses = tuple(self._handler(record, self._discovery))
-            for response in responses:
+        message = normalize_distributed_message(record)
+
+        if self._event_store is None:
+            self._handle_without_durability(stream, entry_id, message)
+            return
+
+        stream_name = self._workflow_stream_name(message)
+        replayed = self._load_recorded_outputs(stream_name, message)
+        if replayed is not None:
+            for response in replayed:
                 self._transport.publish_message(response)
             self._transport.ack(stream, self._group, entry_id)
+            return
+
+        try:
+            responses = tuple(
+                self._normalize_outputs(
+                    message=message,
+                    responses=self._handler(message, self._discovery),
+                )
+            )
         except Exception as error:
             logger.warning(
                 "distributed_service_handler_failed",
@@ -141,9 +160,96 @@ class DistributedService:
                 error_type=type(error).__name__,
                 error_message=str(error),
             )
-            for response in self._error_messages(record, error):
+            responses = tuple(
+                self._normalize_outputs(
+                    message=message,
+                    responses=self._error_messages(message, error),
+                )
+            )
+
+        try:
+            self._event_store.append_to_stream(stream_name, (message, *responses))
+        except ConcurrencyConflictError:
+            replayed = self._load_recorded_outputs(stream_name, message)
+            if replayed is None:
+                raise
+            for response in replayed:
                 self._transport.publish_message(response)
             self._transport.ack(stream, self._group, entry_id)
+            return
+
+        for response in responses:
+            self._transport.publish_message(response)
+        self._transport.ack(stream, self._group, entry_id)
+
+    def _handle_without_durability(self, stream: str, entry_id: str, message: Message) -> None:
+        try:
+            responses = tuple(self._handler(message, self._discovery))
+            for response in responses:
+                self._transport.publish_message(response)
+        except Exception as error:
+            logger.warning(
+                "distributed_service_handler_failed",
+                agent_name=self._agent_name,
+                error_type=type(error).__name__,
+                error_message=str(error),
+            )
+            for response in self._error_messages(message, error):
+                self._transport.publish_message(response)
+        self._transport.ack(stream, self._group, entry_id)
+
+    def _workflow_stream_name(self, message: Message) -> str:
+        domain = (message.metadata.domain or "distributed").strip() or "distributed"
+        turn_id = (
+            message.metadata.turn_id
+            or message.metadata.runtime_id
+            or getattr(message.metadata, "message_id", "")
+        )
+        return f"workflow:{domain}:{turn_id}"
+
+    def _load_recorded_outputs(
+        self,
+        stream_name: str,
+        message: Message,
+    ) -> tuple[Message, ...] | None:
+        assert self._event_store is not None
+        input_message_id = getattr(message.metadata, "message_id", "")
+        if not input_message_id:
+            return None
+
+        recorded = self._event_store.read_stream(stream_name).events
+        input_seen = False
+        outputs: list[Message] = []
+        for recorded_message in recorded:
+            if getattr(recorded_message.metadata, "message_id", "") == input_message_id:
+                input_seen = True
+                continue
+            if recorded_message.metadata.reply_to_message_id == input_message_id:
+                outputs.append(recorded_message)
+
+        return tuple(outputs) if input_seen else None
+
+    @staticmethod
+    def _normalize_outputs(
+        *,
+        message: Message,
+        responses: Sequence[Message],
+    ) -> tuple[Message, ...]:
+        normalized: list[Message] = []
+        for response in responses:
+            prepared = normalize_distributed_message(response).with_metadata(
+                runtime_id=response.metadata.runtime_id or message.metadata.runtime_id,
+                session_id=response.metadata.session_id or message.metadata.session_id,
+                turn_id=response.metadata.turn_id or message.metadata.turn_id,
+                domain=response.metadata.domain or message.metadata.domain,
+                reply_to_message_id=(
+                    response.metadata.reply_to_message_id
+                    or getattr(message.metadata, "message_id", "")
+                ),
+                trace=response.metadata.trace or message.metadata.trace,
+            )
+            normalized.append(prepared)
+        return tuple(normalized)
 
     def _error_messages(self, message: Message, error: Exception) -> tuple[Message, ...]:
         reply_target = self._resolve_reply_target(message)

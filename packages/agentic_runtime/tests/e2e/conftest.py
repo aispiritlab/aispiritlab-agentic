@@ -70,17 +70,17 @@ def e2e_model_override():
 
     original_model = settings.model_name
     original_orchestration = settings.orchestration_model_name
-    original_thinking = settings.thinkink_model
+    original_thinking = settings.thinking_model
 
     settings.model_name = "Qwen/Qwen3.5-2B"
     settings.orchestration_model_name = "Qwen/Qwen3.5-2B"
-    settings.thinkink_model = "Qwen/Qwen3.5-2B"
+    settings.thinking_model = "Qwen/Qwen3.5-2B"
 
     yield
 
     settings.model_name = original_model
     settings.orchestration_model_name = original_orchestration
-    settings.thinkink_model = original_thinking
+    settings.thinking_model = original_thinking
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -90,7 +90,7 @@ def workflow_smoke_model_ready(workflow_smoke_enabled, e2e_model_override):
     for model_name in {
         settings.model_name,
         settings.orchestration_model_name,
-        settings.thinkink_model,
+        settings.thinking_model,
     }:
         _ensure_model_available(model_name)
 

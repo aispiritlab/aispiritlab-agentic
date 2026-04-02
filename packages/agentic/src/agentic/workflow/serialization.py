@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 import json
+from collections.abc import Callable
 from typing import Any
 
-from agentic_runtime.distributed.contracts import AgentHeartbeat, AgentRegistration
-from agentic_runtime.messaging.messages import (
+from agentic.observability import TraceSnapshot
+from agentic.workflow.messages import (
     AssistantMessage,
     Command,
     ConversationData,
@@ -24,15 +25,8 @@ from agentic_runtime.messaging.messages import (
     UserCommand,
     UserMessage,
 )
-from agentic.observability import TraceSnapshot
-from agentic.workflow.serialization import (
-    add_registration_hook,
-    register_record_types as register_workflow_record_types,
-)
 
 _BASE_SERIALIZABLE_TYPES = (
-    AgentHeartbeat,
-    AgentRegistration,
     AssistantMessage,
     Command,
     Event,
@@ -50,28 +44,20 @@ _BASE_SERIALIZABLE_TYPES = (
 )
 _TYPE_MAP = {record_type.__name__: record_type for record_type in _BASE_SERIALIZABLE_TYPES}
 
-_forwarding = False
+
+_external_hooks: list[Callable[..., None]] = []
 
 
-def _mirror_from_workflow(*record_types: type[object]) -> None:
-    """Callback: when the workflow serialization module registers types, mirror them here."""
-    for record_type in record_types:
-        _TYPE_MAP.setdefault(record_type.__name__, record_type)
-
-
-add_registration_hook(_mirror_from_workflow)
+def add_registration_hook(hook: Callable[..., None]) -> None:
+    """Register a callback invoked whenever new record types are added."""
+    _external_hooks.append(hook)
 
 
 def register_record_types(*record_types: type[object]) -> None:
-    global _forwarding
     for record_type in record_types:
         _TYPE_MAP[record_type.__name__] = record_type
-    if not _forwarding:
-        _forwarding = True
-        try:
-            register_workflow_record_types(*record_types)
-        finally:
-            _forwarding = False
+    for hook in _external_hooks:
+        hook(*record_types)
 
 
 def serialize_record(record: object) -> str:
@@ -100,7 +86,10 @@ def deserialize_record(value: str | bytes) -> Any:
         if isinstance(trace_payload, dict):
             metadata_payload["trace"] = TraceSnapshot(**trace_payload)
         metadata_type = MessageMetadata
-        if any(key in metadata_payload for key in ("event_id", "message_id", "sequence_no", "content_sha256")):
+        if any(
+            key in metadata_payload
+            for key in ("event_id", "message_id", "sequence_no", "content_sha256")
+        ):
             metadata_type = RecordedMessageMetadata
         payload["metadata"] = metadata_type(**metadata_payload)
     if record_type in {

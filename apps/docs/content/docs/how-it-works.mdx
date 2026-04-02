@@ -71,7 +71,9 @@ chat -> planner -> search -> summary
 ```
 
 Each service registers itself, publishes heartbeats, consumes only messages targeted to it, and
-publishes the next message back to Redis Streams.
+publishes the next message back to Redis Streams. In distributed mode the same step is also
+recorded in a durable per-turn workflow stream so a restarted service can replay stored outputs for
+an already-processed input instead of running the handler twice.
 
 ## Lab 6 Request Flow
 
@@ -80,6 +82,7 @@ publishes the next message back to Redis Streams.
 3. The search agent calls LangSearch and deduplicates results by URL.
 4. The summary agent compacts the results and generates the final answer.
 5. The final answer is sent back to the original reply target and the turn is marked complete.
+6. Each distributed step is appended to a durable workflow stream keyed by turn ID.
 
 ```mermaid
 sequenceDiagram

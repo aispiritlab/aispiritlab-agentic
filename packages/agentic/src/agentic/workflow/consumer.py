@@ -5,9 +5,10 @@ from typing import Callable
 
 from agentic.observability import LLMTracer, NoopLLMTracer
 
+from agentic.workflow.errors import StepLimitExceeded
 from agentic.workflow.message_stream import MessageStream
 from agentic.workflow.messages import Message
-from agentic.workflow.reactor import Decider, Reactor, TechnicalRoutingFn
+from agentic.workflow.reactor import MessageRouter, Reactor, TechnicalRoutingFn
 
 
 def _default_is_retryable(error: Exception) -> bool:
@@ -23,14 +24,8 @@ class ConsumerConfig:
     )
 
 
-class StepLimitExceeded(RuntimeError):
-    def __init__(self, max_steps: int) -> None:
-        super().__init__(f"Consumer reached max_steps={max_steps}.")
-        self.max_steps = max_steps
-
-
 class MessageConsumer:
-    """Consumer: polluje stream, przekazuje do processorow (Decider, Reactor)."""
+    """Consumer: polluje stream, przekazuje do processorow (MessageRouter, Reactor)."""
 
     def __init__(
         self,
@@ -43,7 +38,7 @@ class MessageConsumer:
     def consume(
         self,
         stream: MessageStream,
-        decider: Decider,
+        decider: MessageRouter,
         routing_fn: TechnicalRoutingFn,
     ) -> None:
         """Poll stream az pusty. Wiadomosc -> decider -> routing -> reactor -> output -> stream."""

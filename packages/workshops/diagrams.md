@@ -45,7 +45,7 @@ flowchart TB
     subgraph WorkflowSys ["Workflow Subsystem"]
       stream["MessageStream"]
       consumer["MessageConsumer"]
-      decider["Decider fn"]
+      decider["MessageRouter fn"]
       reactor["Reactor\n(LLM / MultiTurn)"]
       routing["TechnicalRoutingFn"]
       bus["InMemoryMessageBus"]
@@ -203,9 +203,9 @@ sequenceDiagram
 
 ---
 
-## 4. ManageNotes Workflow (Decider + Events)
+## 4. ManageNotes Workflow (MessageRouter + Events)
 
-Workflow with custom decider that parses tool calls into domain events (CreatedNote, NoteUpdated).
+Workflow with a custom message router that parses tool calls into domain events (CreatedNote, NoteUpdated).
 
 ```mermaid
 sequenceDiagram
@@ -216,7 +216,7 @@ sequenceDiagram
   box rgb(13, 71, 161) Workflow Engine
     participant Stream as MessageStream
     participant Consumer as MessageConsumer
-    participant Decider as manage_notes_decider
+    participant MessageRouter as manage_notes_decider
     participant Reactor as LLMReactor
   end
 
@@ -230,11 +230,11 @@ sequenceDiagram
   end
 
   TE->>Stream: append(UserMessage)
-  TE->>Consumer: consume(stream, decider, routing)
+  TE->>Consumer: consume(stream, message_router, routing)
 
   Consumer->>Stream: read_next() → UserMessage
-  Consumer->>Decider: decider(UserMessage)
-  Decider-->>Consumer: [UserMessage]
+  Consumer->>MessageRouter: message_router(UserMessage)
+  MessageRouter-->>Consumer: [UserMessage]
   Consumer->>Reactor: invoke(UserMessage)
   Reactor->>Agent: respond(text)
   Agent->>Tools: add_note(name, content)
@@ -244,9 +244,9 @@ sequenceDiagram
   Consumer->>Stream: append(LLMResponse)
 
   Consumer->>Stream: read_next() → LLMResponse
-  Consumer->>Decider: decider(LLMResponse)
-  Note over Decider: Parse tool_calls:<br/>AddNote → [CreatedNote, NoteUpdated]
-  Decider-->>Consumer: [CreatedNote, NoteUpdated]
+  Consumer->>MessageRouter: message_router(LLMResponse)
+  Note over MessageRouter: Parse tool_calls:<br/>AddNote → [CreatedNote, NoteUpdated]
+  MessageRouter-->>Consumer: [CreatedNote, NoteUpdated]
 
   Consumer->>Stream: append(CreatedNote)
   Consumer->>Stream: append(NoteUpdated)
@@ -394,7 +394,7 @@ sequenceDiagram
   box rgb(13, 71, 161) Workflow Engine
     participant Stream as MessageStream
     participant Consumer as MessageConsumer
-    participant Decider as organizer_decider
+    participant MessageRouter as organizer_decider
     participant Reactor as LLMReactor
   end
 
@@ -406,11 +406,11 @@ sequenceDiagram
   Bus->>OH: CreatedNote(note_name, note_content)
   OH->>Stream: append(CreatedNote)
 
-  Stream->>Consumer: consume(stream, decider, routing)
+  Stream->>Consumer: consume(stream, message_router, routing)
   Consumer->>Stream: read_next() → CreatedNote
-  Consumer->>Decider: decider(CreatedNote)
-  Note over Decider: Convert to UserMessage:<br/>"Nazwa: X\nTreść: Y"
-  Decider-->>Consumer: [UserMessage]
+  Consumer->>MessageRouter: message_router(CreatedNote)
+  Note over MessageRouter: Convert to UserMessage:<br/>"Nazwa: X\nTreść: Y"
+  MessageRouter-->>Consumer: [UserMessage]
 
   Consumer->>Reactor: invoke(UserMessage)
   Reactor->>Agent: respond(formatted text)
@@ -421,7 +421,7 @@ sequenceDiagram
   Consumer->>Stream: append(LLMResponse)
 
   Consumer->>Stream: read_next() → LLMResponse
-  Consumer->>Decider: decider(LLMResponse) → []
+  Consumer->>MessageRouter: message_router(LLMResponse) → []
   Note over Consumer: Stream empty → done
 
   OH-->>Bus: WorkflowExecution (classification result)
@@ -468,7 +468,7 @@ sequenceDiagram
   par Organizer Handler
     Bus->>OH_Org: CreatedNote
     OH_Org->>Org: handle(CreatedNote)
-    Org->>Org: Decider → UserMessage → LLMReactor
+    Org->>Org: MessageRouter → UserMessage → LLMReactor
     Org->>Org: Agent classifies with PARA tags
     Org-->>OH_Org: WorkflowExecution (tags applied)
   and RAG Handler
@@ -518,7 +518,7 @@ sequenceDiagram
 
 ## 11. Lab 1 — Writer-Critic with Events
 
-Two agents coordinated via a domain event (WriterCompleted). Introduces the Decider pattern and `dispatch_output_handlers`.
+Two agents coordinated via a domain event (WriterCompleted). Introduces the MessageRouter pattern and `dispatch_output_handlers`.
 
 ```mermaid
 sequenceDiagram
@@ -740,7 +740,7 @@ sequenceDiagram
 
 ## 15. Consumer Loop Detail
 
-The core message processing loop used by all workflows. Decider decides WHAT happens, Reactor handles HOW.
+The core message processing loop used by all workflows. MessageRouter decides WHAT happens, Reactor handles HOW.
 
 ```mermaid
 sequenceDiagram
@@ -754,7 +754,7 @@ sequenceDiagram
 
   box rgb(27, 94, 32) Consumer Loop
     participant Consumer as MessageConsumer
-    participant Decider as Decider fn
+    participant MessageRouter as MessageRouter fn
     participant Routing as TechnicalRoutingFn
   end
 
@@ -763,14 +763,14 @@ sequenceDiagram
   end
 
   Caller->>Stream: append(UserMessage)
-  Caller->>Consumer: consume(stream, decider, routing_fn)
+  Caller->>Consumer: consume(stream, message_router, routing_fn)
 
   loop while stream.read_next() is not None
     Consumer->>Stream: read_next()
     Stream-->>Consumer: msg
 
-    Consumer->>Decider: decider(msg)
-    Decider-->>Consumer: commands: Sequence[Message]
+    Consumer->>MessageRouter: message_router(msg)
+    MessageRouter-->>Consumer: commands: Sequence[Message]
 
     loop for each command
       Consumer->>Routing: routing_fn(command)
@@ -856,7 +856,7 @@ sequenceDiagram
     Bus->>Store: persist
     TE->>MN: handle(UserMessage)
     MN->>MN: Agent → add_note tool
-    MN->>MN: Decider emits CreatedNote + NoteUpdated
+    MN->>MN: MessageRouter emits CreatedNote + NoteUpdated
     MN-->>TE: WorkflowExecution(text, events)
     TE->>Bus: publish(AssistantMessage)
     TE->>Bus: publish(CreatedNote)
@@ -865,7 +865,7 @@ sequenceDiagram
     par Organizer (auto-triggered)
       Bus->>OHD: CreatedNote
       OHD->>OR: handle(CreatedNote)
-      OR->>OR: Decider → UserMessage → Agent → tag_note
+      OR->>OR: MessageRouter → UserMessage → Agent → tag_note
       OR-->>OHD: PARA classification
     and RAG (auto-triggered)
       Bus->>OHD: NoteUpdated

@@ -74,12 +74,12 @@ def _event(name: str) -> Event:
 
 
 def _noop_decider(msg: Message) -> Sequence[Message]:
-    """Decider that produces no commands — terminates immediately."""
+    """Message router that produces no commands and terminates immediately."""
     return []
 
 
 def _echo_decider(msg: Message) -> Sequence[Message]:
-    """Decider that echoes UserMessage as an Event command, ignores the rest."""
+    """Message router that echoes UserMessage as an Event command and ignores the rest."""
     if isinstance(msg, UserMessage):
         return [
             Event(
@@ -147,7 +147,7 @@ class TestMessageConsumerBasicFlow:
         messages = stream.all_messages()
         # 1. UserMessage("input") — initial
         # 2. AssistantMessage("result") — reactor output (Event command NOT in stream)
-        # Decider sees AssistantMessage → [] → done
+        # MessageRouter sees AssistantMessage → [] → done
         assert len(messages) == 2
         assert isinstance(messages[0], UserMessage)
         assert isinstance(messages[1], AssistantMessage)
@@ -170,7 +170,7 @@ class TestMessageConsumerBasicFlow:
 
 class TestMessageConsumerStepLimit:
     def test_raises_on_step_limit(self) -> None:
-        """Decider that always produces a command creates infinite loop → step limit."""
+        """Message router that always produces a command creates infinite loop → step limit."""
 
         def infinite_decider(msg: Message) -> Sequence[Message]:
             return [Event(type="loop")]
@@ -235,7 +235,7 @@ class TestMessageConsumerRetry:
 
 class TestMessageConsumerMultiStep:
     def test_multi_step_chain(self) -> None:
-        """Decider produces a chain: step1 → step2 → done."""
+        """Message router produces a chain: step1 → step2 → done."""
         step_count = 0
 
         def chain_decider(msg: Message) -> Sequence[Message]:
@@ -259,7 +259,7 @@ class TestMessageConsumerMultiStep:
         assert names == ["step1", "step2", "done"]
 
     def test_decider_fans_out_multiple_commands(self) -> None:
-        """Decider produces multiple commands from one message."""
+        """Message router produces multiple commands from one message."""
         reactor = FakeReactor(response_text="processed")
 
         def fan_out_decider(msg: Message) -> Sequence[Message]:

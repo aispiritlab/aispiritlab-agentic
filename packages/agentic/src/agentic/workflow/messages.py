@@ -25,6 +25,9 @@ class MessageMetadata:
     prompt_name: str | None = None
     prompt_hash: str | None = None
     status: str | None = None
+    stream_name: str = ""
+    stream_position: int | None = None
+    global_position: int | None = None
     trace: TraceSnapshot | None = None
     attempt_no: int | None = None
     loop_iteration: int | None = None

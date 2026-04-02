@@ -22,3 +22,11 @@ print(result.text)
 - `ffmpeg` is required for non-WAV encoded bytes (mp3, m4a, webm, etc.).
 - WAV bytes are decoded through the vendored fast-path parser and do not require `ffmpeg`
   unless resampling is needed.
+
+## Acknowledgements
+
+The event sourcing primitives in `agentic.workflow` (event store, decider, processor, saga)
+are inspired by [Emmett](https://github.com/event-driven-io/emmett) by
+[@oskardudycz](https://github.com/oskardudycz) — a perfect example of event-driven
+messaging done right. Thank you for the excellent reference that shaped the foundation
+of this agentic SDK.

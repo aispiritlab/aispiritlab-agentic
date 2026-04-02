@@ -11,7 +11,7 @@ from agentic.workflow.reactor import Reactor, TechnicalRoutingFn
 def make_llm_routing(reactor: Reactor) -> TechnicalRoutingFn:
     """Simple routing: UserMessage goes to the LLM reactor, everything else is ignored.
 
-    Used by all workflows — the Decider decides WHAT, routing decides HOW.
+    Used by all workflows — the MessageRouter decides WHAT, routing decides HOW.
     """
 
     def routing(command: Message) -> Reactor | None:
