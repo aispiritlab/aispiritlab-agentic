@@ -12,7 +12,23 @@ logger = structlog.get_logger(__name__)
 OBSIDIAN_CLI_BIN = os.getenv("OBSIDIAN_CLI_BIN", "obsidian")
 
 
-def is_personalization_finished() -> bool:
+def _user_personalization_path(user: str | None = None) -> Path:
+    """Return personalization path for a user slug (falls back to legacy)."""
+    try:
+        from agentic_runtime.users import personalization_path
+
+        from personal_assistant import get_active_user
+
+        return personalization_path(user or get_active_user())
+    except Exception:
+        return HOME / ".aispiritagent" / "personalization.json"
+
+
+def is_personalization_finished(user: str | None = None) -> bool:
+    path = _user_personalization_path(user)
+    if path.exists():
+        return True
+    # Legacy fallback
     return (HOME / ".aispiritagent" / "personalization.json").exists()
 
 
@@ -20,6 +36,8 @@ def update_personalization(
     name: str,
     vault_name: str,
     vault_path: str | None = None,
+    *,
+    user: str | None = None,
 ) -> str:
     """Update personalization settings
     Args:
@@ -44,15 +62,16 @@ def update_personalization(
         vault_name=resolved_vault_name,
         vault_path=vault_path,
     )
-    os.makedirs(HOME / ".aispiritagent", exist_ok=True)
+    target_path = _user_personalization_path(user)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, str] = {"name": resolved_name, "vault_name": resolved_vault_name}
     if vault_path is not None and vault_path.strip():
         payload["vault_path"] = vault_path.strip()
 
-    with open(HOME / ".aispiritagent" / "personalization.json", "wb") as f:
+    with open(target_path, "wb") as f:
         f.write(orjson.dumps(payload))
 
-    git_tracer.initial_tracking_project(HOME / ".aispiritagent")
+    git_tracer.initial_tracking_project(target_path.parent)
 
     # RAG indexing is best-effort: it needs a local vault path. Vault-only setup should still succeed.
     try:

@@ -23,10 +23,11 @@ from agentic_graph.tab_state import (
 
 
 def format_runtime_result(result: RuntimeExecutionResult) -> str:
+    status_icon = {"ok": "✅", "error": "❌"}.get(result.status, "⚪")
     lines = [
-        "# Runtime Result",
-        f"Status: {normalize_text(result.status)}",
-        f"Entry agent: {normalize_text(result.entry_agent)}",
+        f"# {status_icon} Runtime Result",
+        f"**Status:** {normalize_text(result.status)}",
+        f"**Entry agent:** {normalize_text(result.entry_agent)}",
         "",
         "## Response",
         normalize_text(result.response),
@@ -101,13 +102,13 @@ def on_node_selected(
     node_id: str,
     graph_json: str,
     secret_state: SecretState,
-) -> tuple[str, str, str, str, str, str, str, str, str, str]:
+) -> tuple[str, str, str, str, str, str, str, str, str, str, str, str]:
     if not node_id or not graph_json:
-        return "", "", "", "", "", "", "", "", "", ""
+        return "", "", "", "", "", "", "", "", "", "", "", ""
     try:
         graph = graph_from_json(graph_json)
     except (json.JSONDecodeError, KeyError):
-        return "", "", "", "", "", "", "", "", "", ""
+        return "", "", "", "", "", "", "", "", "", "", "", ""
     for node in graph.nodes:
         if node.node_id == node_id:
             is_entry = "Yes" if graph.entry_node_id == node_id else "No"
@@ -115,7 +116,7 @@ def on_node_selected(
             extra_config = "\n".join(
                 f"{key}={value}"
                 for key, value in node.config
-                if key not in {"api_key", "api_key_env", "path"}
+                if key not in {"api_key", "api_key_env", "path", "provider_type", "model_id"}
             )
             return (
                 node.display_name,
@@ -128,8 +129,10 @@ def on_node_selected(
                 config_map.get("api_key_env", ""),
                 config_map.get("path", ""),
                 extra_config,
+                config_map.get("provider_type", ""),
+                config_map.get("model_id", ""),
             )
-    return "", "", "", "", "", "", "", "", "", ""
+    return "", "", "", "", "", "", "", "", "", "", "", ""
 
 
 def delete_selected(node_id: str, graph_json: str) -> str:
@@ -195,6 +198,8 @@ def update_node_property(
     api_key_env: str,
     path_value: str,
     config_raw: str,
+    provider_type: str = "",
+    model_id: str = "",
 ) -> str:
     if not node_id or not graph_json:
         return graph_json
@@ -222,6 +227,8 @@ def update_node_property(
                     api_key_env=api_key_env,
                     path_value=path_value,
                     extra_config_raw=config_raw,
+                    provider_type=provider_type,
+                    model_id=model_id,
                 ),
             )
         )
@@ -309,12 +316,13 @@ def run_runtime(
     graph_json: str,
     secret_state: SecretState,
     runtime_message: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     try:
         graph = graph_from_json(graph_json)
     except Exception as error:
-        return f"### Validation\n- ERROR: {error}", ""
+        return f"### Validation\n- ERROR: {error}", "", "error"
     sanitized_graph, sanitized_secrets = sanitize_graph_and_secrets(graph, secret_state)
+
     try:
         result = run_graph_runtime(
             sanitized_graph,
@@ -325,10 +333,13 @@ def run_runtime(
         return (
             format_validation_report(sanitized_graph, sanitized_secrets),
             f"# Runtime error\n- ERROR: {error}",
+            "error",
         )
+
     return (
         format_validation_report(sanitized_graph, sanitized_secrets),
         format_runtime_result(result),
+        result.status,
     )
 
 
@@ -339,3 +350,87 @@ def import_json(raw: str) -> tuple[str, str]:
         return "", f"### Validation\n- ERROR: {error}"
     sanitized_graph, _ = sanitize_graph_and_secrets(graph)
     return graph_to_json(sanitized_graph), ""
+
+
+def save_as_workspace(
+    graph_json: str,
+    secret_state: SecretState,
+    workspace_name: str,
+) -> str:
+    """Save the current graph as a workspace preset."""
+    from agentic_runtime.workspaces import create_workspace
+
+    resolved_name = workspace_name.strip()
+    if not resolved_name:
+        return "Enter a workspace name."
+
+    try:
+        graph = graph_from_json(graph_json)
+    except Exception as error:
+        return f"Error: invalid graph — {error}"
+
+    sanitized_graph, _ = sanitize_graph_and_secrets(graph, secret_state)
+    builder = AgenticGraphBuilder(sanitized_graph)
+    issues = builder.validate()
+    errors = [i for i in issues if i.level == "error"]
+    if errors:
+        return "Graph has validation errors:\n" + "\n".join(f"- {e.message}" for e in errors)
+
+    sanitized_json = graph_to_json(sanitized_graph)
+    preset = create_workspace(
+        name=resolved_name,
+        graph_json=sanitized_json,
+        description=f"Agent graph: {graph.name}",
+    )
+    return f"Workspace **{preset.name}** saved (`{preset.slug}`)."
+
+
+def load_from_workspace(workspace_name: str) -> tuple[str, str]:
+    """Load a graph from a saved workspace preset."""
+    from agentic_runtime.workspaces import list_workspaces, load_workspace_graph
+
+    if not workspace_name:
+        return "", "Select a workspace to load."
+
+    slug_map = {w.name: w.slug for w in list_workspaces()}
+    slug = slug_map.get(workspace_name, workspace_name)
+    graph_json = load_workspace_graph(slug)
+    if not graph_json or graph_json == "{}":
+        return "", f"Workspace **{workspace_name}** has no saved graph."
+
+    try:
+        graph_from_json(graph_json)
+    except Exception as error:
+        return "", f"Error loading workspace graph: {error}"
+
+    return graph_json, f"Loaded graph from **{workspace_name}**."
+
+
+def delete_workspace_action(workspace_name: str) -> tuple[object, str]:
+    """Delete a workspace preset."""
+    from agentic_runtime.workspaces import delete_workspace, list_workspaces
+    import gradio as gr
+
+    if not workspace_name:
+        return gr.skip(), "Select a workspace to delete."
+
+    slug_map = {w.name: w.slug for w in list_workspaces()}
+    slug = slug_map.get(workspace_name, workspace_name)
+    if not slug:
+        return gr.skip(), "Workspace not found."
+    try:
+        delete_workspace(slug)
+    except ValueError as e:
+        return gr.skip(), str(e)
+    try:
+        from personal_assistant import drop_runtime_sessions
+
+        drop_runtime_sessions(workspace=slug)
+    except Exception:
+        pass
+
+    choices = [w.name for w in list_workspaces()]
+    return (
+        gr.Dropdown(choices=choices, value=choices[0] if choices else None),
+        f"Deleted **{workspace_name}**.",
+    )

@@ -123,5 +123,5 @@ def test_organizer_decider_formats_created_note_as_user_message() -> None:
 
     assert len(result) == 1
     assert isinstance(result[0], UserMessage)
-    assert "Projekt" in result[0].text
-    assert "Plan sprintu" in result[0].text
+    assert "Projekt" in result[0].data.text
+    assert "Plan sprintu" in result[0].data.text

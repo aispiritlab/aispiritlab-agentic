@@ -75,6 +75,20 @@ def create_tracer(enabled: bool = True) -> LLMTracer:
     return build_tracer(enabled=enabled, backend="mlflow", tracking_uri=tracking_uri)
 
 
+def set_mlflow_workspace(workspace_slug: str) -> None:
+    """Set the active MLflow workspace for trace scoping.
+
+    Requires MLflow server started with ``--enable-workspaces``.
+    Silently skips if the server does not support workspaces.
+    """
+    try:
+        set_workspace = getattr(mlflow, "set_workspace", None)
+        if callable(set_workspace):
+            set_workspace(workspace_slug)
+    except Exception:
+        pass
+
+
 def get_tracing_run_id() -> str | None:
     return _RUN_ID
 

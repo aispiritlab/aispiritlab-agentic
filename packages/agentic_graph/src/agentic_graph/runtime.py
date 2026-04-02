@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Literal
 
 from agentic_graph.builder import AgenticGraphBuilder
@@ -20,12 +21,28 @@ class RuntimeOutput:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeEventRecord:
+    index: int
+    type_name: str
+    kind: str
+    source: str
+    target: str
+    status: str
+    text: str
+    turn_id: str = ""
+    session_id: str = ""
+    runtime_id: str = ""
+    detail_markdown: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeExecutionResult:
     status: RuntimeStatus
     entry_agent: str
     response: str
     steps: tuple[str, ...] = ()
     outputs: tuple[RuntimeOutput, ...] = ()
+    events: tuple[RuntimeEventRecord, ...] = ()
 
 
 def _normalize_text(value: object | None) -> str:
@@ -34,6 +51,77 @@ def _normalize_text(value: object | None) -> str:
     if isinstance(value, str):
         return value
     return str(value)
+
+
+def _truncate(value: str, max_len: int = 60) -> str:
+    if len(value) <= max_len:
+        return value
+    return value[: max_len - 3] + "..."
+
+
+def _format_event_detail(message: object) -> str:
+    kind = getattr(message, "kind", "?")
+    msg_type = type(message).__name__
+    metadata = getattr(message, "metadata", None)
+
+    lines = [
+        f"### {msg_type}",
+        f"**Kind:** `{kind}`",
+    ]
+    if metadata is not None:
+        lines.append(f"**Source:** `{getattr(metadata, 'source', '')}`")
+        lines.append(f"**Target:** `{getattr(metadata, 'target', '')}`")
+        turn_id = getattr(metadata, "turn_id", "")
+        if turn_id:
+            lines.append(f"**Turn:** `{turn_id}`")
+        session_id = getattr(metadata, "session_id", "")
+        if session_id:
+            lines.append(f"**Session:** `{session_id}`")
+        status = getattr(metadata, "status", "")
+        if status:
+            lines.append(f"**Status:** `{status}`")
+        runtime_id = getattr(metadata, "runtime_id", "")
+        if runtime_id:
+            lines.append(f"**Runtime:** `{runtime_id}`")
+
+    data = getattr(message, "data", None)
+    if data:
+        if hasattr(data, "text") and data.text:
+            lines.extend(["", "**Text:**", f"```\n{data.text}\n```"])
+        elif isinstance(data, dict) and data:
+            lines.extend(
+                ["", "**Data:**", f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"]
+            )
+
+    return "\n".join(lines)
+
+
+def _build_event_record(index: int, message: object) -> RuntimeEventRecord:
+    kind = getattr(message, "kind", "?")
+    msg_type = type(message).__name__
+    metadata = getattr(message, "metadata", None)
+    data = getattr(message, "data", None)
+
+    if hasattr(data, "text") and data.text:
+        text = _truncate(data.text)
+    elif isinstance(data, dict):
+        text = _truncate(json.dumps(data, ensure_ascii=False))
+    else:
+        text = ""
+
+    return RuntimeEventRecord(
+        index=index,
+        type_name=msg_type,
+        kind=_normalize_text(kind),
+        source=_normalize_text(getattr(metadata, "source", "")),
+        target=_normalize_text(getattr(metadata, "target", "")),
+        status=_normalize_text(getattr(metadata, "status", "")),
+        text=text,
+        turn_id=_normalize_text(getattr(metadata, "turn_id", "")),
+        session_id=_normalize_text(getattr(metadata, "session_id", "")),
+        runtime_id=_normalize_text(getattr(metadata, "runtime_id", "")),
+        detail_markdown=_format_event_detail(message),
+    )
 
 
 class GraphRuntime:
@@ -85,6 +173,10 @@ class GraphRuntime:
                     path=output.path,
                 )
                 for output in self._system.outputs
+            ),
+            events=tuple(
+                _build_event_record(index, message)
+                for index, message in enumerate(self._system.runtime.message_log, 1)
             ),
         )
 

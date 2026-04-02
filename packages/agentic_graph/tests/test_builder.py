@@ -3,9 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tomllib
 
-import orjson
-import pytest
-
+from agentic.workflow.messages import RecordedMessageMetadata
 from agentic_graph import AgenticGraphBuilder
 from agentic_graph.compiler import compile_graph
 from agentic_graph.events import GraphCompletionEvent
@@ -16,7 +14,8 @@ from agentic_graph.serialization import graph_from_json, graph_to_json
 from agentic_graph.tab import _sanitize_graph_and_secrets
 from agentic_runtime.distributed.serialization import deserialize_record, serialize_record
 from agentic_runtime.storage.projections import GenericProjection
-from agentic.workflow.messages import RecordedMessageMetadata
+import orjson
+import pytest
 
 
 def _node(
@@ -402,6 +401,9 @@ def test_run_graph_runtime_broadcasts_to_three_searchers_and_summarizes(
     assert output_path.read_text(encoding="utf-8") == result.response
     assert any("entry -> search_tavily" in step for step in result.steps)
     assert any("summarizer: summarizing 3 event(s)" in step for step in result.steps)
+    assert result.events
+    assert any(event.type_name == "UserMessage" for event in result.events)
+    assert any(event.source == "user" for event in result.events)
 
 
 def test_run_graph_runtime_route_one_dispatches_single_target(
@@ -449,6 +451,7 @@ def test_run_graph_runtime_route_one_dispatches_single_target(
     assert "env-tavily" not in result.response
     assert "env-notes" not in result.response
     assert any("entry -> search_valyu: dispatched" in step for step in result.steps)
+    assert result.events
 
 
 def test_serialization_normalizes_legacy_node_types() -> None:

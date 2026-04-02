@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Generator
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,8 +11,21 @@ from agentic.image_generation_call import ImageGenerationResult
 from agentic.models import ModelProvider
 from agentic.providers.api.http_client import ModelConnectionError
 from agentic.voice import convert_audio, is_empty_transcription
-import gradio as gr
-
+from agentic_runtime.users import (
+    create_user as _create_user_profile,
+)
+from agentic_runtime.users import (
+    default_user_slug,
+    list_users,
+    personalization_path,
+)
+from agentic_runtime.users import (
+    delete_user as _delete_user_profile,
+)
+from agentic_runtime.workspaces import (
+    list_workspaces,
+    set_active_workspace,
+)
 from chat import (
     ChatAppConfig,
     ChatHistory,
@@ -24,7 +37,13 @@ from chat import (
     message_prompt_text,
     restore_shutdown_handlers,
 )
-from chat.components import add_message, append_voice_response, coerce_text, describe_uploaded_files, extract_uploaded_files
+from chat.components import (
+    add_message,
+    append_voice_response,
+)
+from chat.styles import GLOBAL_CSS
+from chat.theme import SPIRIT_THEME
+import gradio as gr
 
 from personal_assistant import (
     Prompts,
@@ -32,18 +51,58 @@ from personal_assistant import (
     chat_agent,
     clear_chat_history,
     clear_personalization_history,
+    drop_runtime_sessions,
     generate_image_agent,
     get_initial_greeting,
     get_prompt,
     shutdown_application,
+    switch_user,
 )
 from personal_assistant.settings import settings
 
 if TYPE_CHECKING:
     from personal_assistant.agents.manage_notes.evaluation import PromptOptimizationDefinition
 
-PERSONALIZATION_FILE = Path.home() / ".aispiritagent" / "personalization.json"
+PERSONALIZATION_FILE = Path.home() / ".aispiritagent" / "personalization.json"  # legacy fallback
 DEFAULT_IMAGE_PROMPT = "Stwórz obraz na podstawie tego opisu."
+
+
+def _get_user_choices() -> list[str]:
+    return [u.name for u in list_users()]
+
+
+def _get_user_slug_map() -> dict[str, str]:
+    return {u.name: u.slug for u in list_users()}
+
+
+def _get_default_user_name() -> str:
+    users = list_users()
+    return users[0].name if users else "Default"
+
+
+def _get_workspace_choices() -> list[str]:
+    return [w.name for w in list_workspaces()]
+
+
+def _get_default_workspace() -> str:
+    workspaces = list_workspaces()
+    return workspaces[0].name if workspaces else "Default"
+
+
+def _get_default_workspace_slug() -> str:
+    workspaces = list_workspaces()
+    return workspaces[0].slug if workspaces else "default"
+
+
+def _get_workspace_slug_map() -> dict[str, str]:
+    return {w.name: w.slug for w in list_workspaces()}
+
+
+def _personalization_file_for_user(user_slug: str) -> Path:
+    path = personalization_path(user_slug)
+    if path.exists():
+        return path
+    return PERSONALIZATION_FILE  # legacy fallback
 
 model_provider = ModelProvider(name="mlx-community/parakeet-tdt-0.6b-v3", model_provider_type="mlx-audio")
 
@@ -59,12 +118,15 @@ def _shutdown_chat_application() -> None:
     shutdown_application(model_provider)
 
 
-def _chat_greeting() -> str:
-    return get_initial_greeting()
+def _chat_greeting(user: str = "default", workspace: str | None = None) -> str:
+    return get_initial_greeting(user=user, workspace=workspace)
 
 
 def _load_personalization_tools():  # noqa: ANN202
-    from personal_assistant.agents.personalize.tools import is_personalization_finished, update_personalization
+    from personal_assistant.agents.personalize.tools import (
+        is_personalization_finished,
+        update_personalization,
+    )
 
     return is_personalization_finished, update_personalization
 
@@ -113,7 +175,12 @@ def _add_message(
     return add_message(history, message, file_description_prefix="Przesłany plik")
 
 
-def generate_response(history: ChatHistory, mode: str = "Agenci") -> Generator[ChatHistory, None, None]:
+def generate_response(
+    history: ChatHistory,
+    mode: str = "Agenci",
+    active_user: str = "default",
+    active_workspace: str = "default",
+) -> Generator[ChatHistory, None, None]:
     """Generate bot response and stream it to the chat."""
     if not history:
         yield history
@@ -132,17 +199,29 @@ def generate_response(history: ChatHistory, mode: str = "Agenci") -> Generator[C
             if not build_response:
                 response = "Dodaj tekst, aby użyć trybu Chat."
             else:
-                response = chat_agent(build_response)
+                response = chat_agent(
+                    build_response,
+                    user=active_user,
+                    workspace=active_workspace,
+                )
         elif mode == "Generate image":
             if not build_response:
                 response = "Dodaj opis obrazu, aby użyć trybu Generate image."
             else:
-                response = generate_image_agent(build_response or DEFAULT_IMAGE_PROMPT)
+                response = generate_image_agent(
+                    build_response or DEFAULT_IMAGE_PROMPT,
+                    user=active_user,
+                    workspace=active_workspace,
+                )
         else:
             if file_paths and not build_response:
                 response = "Przełącz tryb na Generate image, aby analizować przesłane obrazy."
             else:
-                response = ai_spirit_agent(build_response)
+                response = ai_spirit_agent(
+                    build_response,
+                    user=active_user,
+                    workspace=active_workspace,
+                )
     except (ModelConnectionError, RuntimeError, ValueError) as exc:
         history.append({"role": "assistant", "content": str(exc)})
         yield history
@@ -162,14 +241,17 @@ def generate_response(history: ChatHistory, mode: str = "Agenci") -> Generator[C
         yield history
 
 
-def load_personalization_form() -> tuple[str, str, str]:
+def load_personalization_form(active_user: str = "default") -> tuple[str, str, str]:
     """Load personalization fields from the persisted JSON file."""
-    is_personalization_finished, _ = _load_personalization_tools()
-    if not is_personalization_finished():
+    slug_map = _get_user_slug_map()
+    user_slug = slug_map.get(active_user, active_user)
+    pfile = _personalization_file_for_user(user_slug)
+
+    if not pfile.exists():
         return "", "", "Status: personalizacja nie jest jeszcze skonfigurowana."
 
     try:
-        with open(PERSONALIZATION_FILE, encoding="utf-8") as file:
+        with open(pfile, encoding="utf-8") as file:
             data = json.load(file)
     except (OSError, json.JSONDecodeError) as error:
         return "", "", f"Status: nie udało się odczytać personalizacji ({error})."
@@ -191,7 +273,12 @@ def load_personalization_form() -> tuple[str, str, str]:
     )
 
 
-def save_personalization_form(name: str, vault_name: str) -> tuple[str, object]:
+def save_personalization_form(
+    name: str,
+    vault_name: str,
+    active_user: str,
+    active_workspace: str,
+) -> tuple[str, object]:
     """Persist personalization settings from the UI form."""
     _, update_personalization = _load_personalization_tools()
     resolved_name = name.strip()
@@ -201,7 +288,11 @@ def save_personalization_form(name: str, vault_name: str) -> tuple[str, object]:
         return "Uzupełnij pola: imię i nazwa vaulta.", gr.skip()
 
     try:
-        save_status = update_personalization(name=resolved_name, vault_name=resolved_vault_name)
+        save_status = update_personalization(
+            name=resolved_name,
+            vault_name=resolved_vault_name,
+            user=active_user,
+        )
     except OSError as error:
         return f"Nie udało się zapisać personalizacji: {error}", gr.skip()
     if save_status != "Personalizacja zapisana.":
@@ -209,7 +300,7 @@ def save_personalization_form(name: str, vault_name: str) -> tuple[str, object]:
 
     return (
         "Personalizacja zapisana.",
-        [{"role": "assistant", "content": _chat_greeting()}],
+        [{"role": "assistant", "content": _chat_greeting(active_user, active_workspace)}],
     )
 
 
@@ -232,16 +323,116 @@ def start_training() -> str:
     return "Wkrotce"
 
 
+def _on_user_switch(
+    user_name: str,
+    active_workspace: str,
+) -> tuple[str, list[dict[str, str]], str, str, str]:
+    """Handle user switch: set context, return greeting + personalization."""
+    slug_map = _get_user_slug_map()
+    user_slug = slug_map.get(user_name, user_name)
+    greeting = switch_user(user_slug, workspace=active_workspace)
+    name, vault, status = load_personalization_form(user_slug)
+    return user_slug, [{"role": "assistant", "content": greeting}], name, vault, status
+
+
+def _on_create_user(
+    new_name: str,
+    active_workspace: str,
+) -> tuple[gr.Dropdown, str, list[dict[str, str]]]:
+    """Create user, switch to them, return updated dropdown + greeting."""
+    new_name = new_name.strip()
+    if not new_name:
+        return gr.skip(), "", gr.skip()
+    profile = _create_user_profile(new_name)
+    greeting = switch_user(profile.slug, workspace=active_workspace)
+    choices = _get_user_choices()
+    return (
+        gr.Dropdown(choices=choices, value=profile.name),
+        profile.slug,
+        [{"role": "assistant", "content": greeting}],
+    )
+
+
+def _on_delete_user(
+    user_name: str,
+    active_workspace: str,
+) -> tuple[gr.Dropdown, str, list[dict[str, str]]]:
+    """Delete user, switch to first remaining."""
+    slug_map = _get_user_slug_map()
+    user_slug = slug_map.get(user_name, user_name)
+    try:
+        _delete_user_profile(user_slug)
+    except ValueError:
+        return gr.skip(), user_slug, gr.skip()
+    drop_runtime_sessions(user=user_slug)
+    users = list_users()
+    first = users[0] if users else None
+    if first is None:
+        return gr.skip(), "", gr.skip()
+    greeting = switch_user(first.slug, workspace=active_workspace)
+    choices = _get_user_choices()
+    return (
+        gr.Dropdown(choices=choices, value=first.name),
+        first.slug,
+        [{"role": "assistant", "content": greeting}],
+    )
+
+
 def create_chat_ui() -> gr.Blocks:
     """Create the Personal Assistant chat UI."""
     distributed_mode = settings.agentic_transport == "redis_streams"
     mode_choices = ["Agenci"] if distributed_mode else ["Agenci", "Chat", "Generate image"]
+    default_user = _get_default_user_name()
+    default_slug = default_user_slug()
+    default_workspace = _get_default_workspace()
+    default_workspace_slug = _get_default_workspace_slug()
 
-    with gr.Blocks(fill_height=True, title="AI Spirit Agent") as block:
-        gr.Markdown("# AI Spirit Agent")
+    with gr.Blocks(
+        fill_height=True,
+        title="AI Spirit Agent",
+        theme=SPIRIT_THEME,
+        css=GLOBAL_CSS,
+    ) as block:
+        gr.HTML('<div class="spirit-header"><h1>AI Spirit Agent</h1></div>')
+
+        active_user_state = gr.State(value=default_slug)
+        active_workspace_state = gr.State(value=default_workspace_slug)
+
+        with gr.Row(elem_classes=["context-bar"]):
+            user_selector = gr.Dropdown(
+                label="User",
+                choices=_get_user_choices(),
+                value=default_user,
+                interactive=not distributed_mode,
+                scale=2,
+                min_width=140,
+            )
+            workspace_selector = gr.Dropdown(
+                label="Workspace",
+                choices=_get_workspace_choices(),
+                value=default_workspace,
+                interactive=not distributed_mode,
+                scale=2,
+                min_width=140,
+            )
+            new_user_input = gr.Textbox(
+                label="New user",
+                placeholder="Name",
+                interactive=not distributed_mode,
+                scale=2,
+                min_width=100,
+            )
+            create_user_btn = gr.Button("Create", size="sm", scale=1, interactive=not distributed_mode)
+            delete_user_btn = gr.Button(
+                "Delete",
+                variant="stop",
+                size="sm",
+                scale=1,
+                interactive=not distributed_mode,
+            )
 
         with gr.Tabs():
-            with gr.Tab("Chat"):
+            with gr.Tab("Chat", id="tab-chat"):
                 mode_toggle = gr.Radio(
                     choices=mode_choices,
                     value=mode_choices[0],
@@ -249,7 +440,7 @@ def create_chat_ui() -> gr.Blocks:
                 )
                 chatbot = gr.Chatbot(
                     label="AI Spirit Agent",
-                    value=[{"role": "assistant", "content": _chat_greeting()}],
+                    value=[{"role": "assistant", "content": _chat_greeting(default_slug, default_workspace_slug)}],
                     avatar_images=(
                         None,
                         "https://em-content.zobj.net/source/twitter/53/robot-face_1f916.png",
@@ -292,7 +483,7 @@ def create_chat_ui() -> gr.Blocks:
                 clear_btn = gr.Button("Wyczyść historię")
 
             if not distributed_mode:
-                with gr.Tab("Personalizacja"):
+                with gr.Tab("Settings", id="tab-settings"):
                     gr.Markdown("## Ustawienia personalizacji")
                     name_input = gr.Textbox(label="Imię", placeholder="np. Mateusz")
                     vault_name_input = gr.Textbox(
@@ -318,17 +509,17 @@ def create_chat_ui() -> gr.Blocks:
                         interactive=False,
                     )
 
-                with gr.Tab("Agent Builder"):
+                with gr.Tab("Editor Agents", id="tab-editor"):
                     from agentic_graph import build_agent_builder_tab
 
-                    build_agent_builder_tab()
+                    build_agent_builder_tab(active_workspace_state=active_workspace_state)
 
-                with gr.Tab("Trenowanie"):
+                with gr.Tab("Training", id="tab-training"):
                     gr.Markdown("## Trenowanie")
                     training_start_btn = gr.Button("Rozpocznij", variant="primary")
                     training_status = gr.Markdown("Wkrotce")
 
-                with gr.Tab("Prompt Optimization"):
+                with gr.Tab("Optimization", id="tab-optimization"):
                     notes_evaluation = _load_notes_evaluation()
                     gr.Markdown("## Prompt Optimization (MIPROv2)")
                     gr.Markdown(
@@ -384,6 +575,38 @@ def create_chat_ui() -> gr.Blocks:
                         interactive=False,
                     )
 
+        # --- Workspace switch ---
+        def _on_workspace_switch(ws_name: str, active_user: str) -> tuple[str, ChatHistory]:
+            slug_map = _get_workspace_slug_map()
+            ws_slug = slug_map.get(ws_name, ws_name)
+            set_active_workspace(ws_slug)
+            return ws_slug, [{"role": "assistant", "content": _chat_greeting(active_user, ws_slug)}]
+
+        workspace_selector.change(
+            _on_workspace_switch,
+            inputs=[workspace_selector, active_user_state],
+            outputs=[active_workspace_state, chatbot],
+        )
+
+        # --- User management events ---
+        if not distributed_mode:
+            user_selector.change(
+                _on_user_switch,
+                inputs=[user_selector, active_workspace_state],
+                outputs=[active_user_state, chatbot, name_input, vault_name_input, personalization_status],
+            )
+            create_user_btn.click(
+                _on_create_user,
+                inputs=[new_user_input, active_workspace_state],
+                outputs=[user_selector, active_user_state, chatbot],
+            )
+            delete_user_btn.click(
+                _on_delete_user,
+                inputs=[user_selector, active_workspace_state],
+                outputs=[user_selector, active_user_state, chatbot],
+            )
+
+        # --- Chat events ---
         chat_input.submit(
             _add_message,
             inputs=[chatbot, chat_input],
@@ -391,7 +614,7 @@ def create_chat_ui() -> gr.Blocks:
             queue=False,
         ).then(
             generate_response,
-            inputs=[chatbot, mode_toggle],
+            inputs=[chatbot, mode_toggle, active_user_state, active_workspace_state],
             outputs=[chatbot],
         ).then(
             lambda: gr.MultimodalTextbox(interactive=True),
@@ -405,7 +628,7 @@ def create_chat_ui() -> gr.Blocks:
                 queue=False,
             ).then(
                 generate_response,
-                inputs=[chatbot, mode_toggle],
+                inputs=[chatbot, mode_toggle, active_user_state, active_workspace_state],
                 outputs=[chatbot],
             )
 
@@ -417,31 +640,34 @@ def create_chat_ui() -> gr.Blocks:
                 queue=False,
             )
 
-        def clear_chat() -> ChatHistory:
+        def clear_chat(active_user: str, active_workspace: str) -> ChatHistory:
             """Clear UI and backend agent history."""
-            clear_personalization_history()
-            clear_chat_history()
-            return [{"role": "assistant", "content": _chat_greeting()}]
+            clear_personalization_history(user=active_user, workspace=active_workspace)
+            clear_chat_history(user=active_user, workspace=active_workspace)
+            return [{"role": "assistant", "content": _chat_greeting(active_user, active_workspace)}]
 
         clear_btn.click(
             clear_chat,
+            inputs=[active_user_state, active_workspace_state],
             outputs=[chatbot],
         )
 
         if not distributed_mode:
             block.load(
                 load_personalization_form,
+                inputs=[active_user_state],
                 outputs=[name_input, vault_name_input, personalization_status],
             )
 
             refresh_personalization_btn.click(
                 load_personalization_form,
+                inputs=[active_user_state],
                 outputs=[name_input, vault_name_input, personalization_status],
             )
 
             save_personalization_btn.click(
                 save_personalization_form,
-                inputs=[name_input, vault_name_input],
+                inputs=[name_input, vault_name_input, active_user_state, active_workspace_state],
                 outputs=[personalization_status, chatbot],
             )
 

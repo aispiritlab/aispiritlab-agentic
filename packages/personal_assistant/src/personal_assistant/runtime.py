@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import threading
-import uuid
 from typing import Any
+import uuid
 
 from agentic.image_generation_call import ImageGenerationResult, MfluxImageCall
 from agentic.llm_call import LLMCall
@@ -15,19 +15,19 @@ from agentic.workflow.messages import (
     AssistantMessage,
     ConversationData,
     Message,
-    RecordedMessageMetadata,
     PromptSnapshot,
+    RecordedMessageMetadata,
     UserCommand,
     UserMessage,
 )
-from structlog import get_logger
-
 from agentic_runtime.execution import WorkflowExecution
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.storage.sqlite_store import SQLiteMessageStore
 from agentic_runtime.trace import create_tracer, init_tracing
 from agentic_runtime.turn_execution import TurnExecutor, TurnPlan, coerce_reply_text
 from agentic_runtime.workflow_descriptors import render_workflow_descriptors
+from agentic_runtime.workspaces import build_session_id
+from structlog import get_logger
 
 from personal_assistant.agents.discovery_notes.detective_workflow import DiscoveryNotesWorkflow
 from personal_assistant.agents.manage_notes.manage_notes_workflow import ManageNotesWorkflow
@@ -74,12 +74,20 @@ class WorkflowContext:
 class PARuntime:
     """Personal Assistant runtime — wraps generic workflow infrastructure with PA agents."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        user_slug: str = "default",
+        workspace_slug: str = "default",
+    ) -> None:
         init_tracing()
         self._stop_lock = threading.Lock()
         self._stopped = False
         self._tracer = create_tracer(enabled=True)
         self.runtime_id = self._new_runtime_id()
+        self.user_slug = user_slug
+        self.user_name = user_slug
+        self.workspace_slug = workspace_slug
+        self.session_id = build_session_id(user_slug, workspace_slug)
         self.store = SQLiteMessageStore(
             path=settings.message_store_path,
             batch_size=settings.message_store_batch_size,
@@ -182,7 +190,8 @@ class PARuntime:
         return render_workflow_descriptors(list(self._routable_workflows().values()))
 
     def _routable_workflows(self) -> dict[str, AgenticWorkflow]:
-        personalization_finished = is_personalization_finished()
+        user_slug = getattr(self, "user_slug", getattr(self, "user_name", "default"))
+        personalization_finished = is_personalization_finished(user_slug)
         routable: dict[str, AgenticWorkflow] = {}
         for workflow in self.workflows.values():
             description = workflow.description
@@ -249,6 +258,7 @@ class PARuntime:
                 data=ConversationData(role="user", text=text),
                 metadata=RecordedMessageMetadata(
                     runtime_id=self.runtime_id,
+                    session_id=self.session_id,
                     domain="general",
                     source="user",
                 ),

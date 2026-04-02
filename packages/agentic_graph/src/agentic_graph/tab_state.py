@@ -112,11 +112,13 @@ def build_config(
     api_key_env: str,
     path_value: str,
     extra_config_raw: str,
+    provider_type: str = "",
+    model_id: str = "",
 ) -> tuple[tuple[str, str], ...]:
     existing = {
         key: value
         for key, value in node.config
-        if key not in {"api_key", "api_key_env", "path"}
+        if key not in {"api_key", "api_key_env", "path", "provider_type", "model_id"}
     }
     for key, value in parse_config(extra_config_raw):
         existing[key] = value
@@ -126,6 +128,10 @@ def build_config(
         config_items.append(("api_key_env", api_key_env))
     if path_value:
         config_items.append(("path", path_value))
+    if provider_type:
+        config_items.append(("provider_type", provider_type))
+    if model_id:
+        config_items.append(("model_id", model_id))
     for key, value in existing.items():
         if value:
             config_items.append((key, value))

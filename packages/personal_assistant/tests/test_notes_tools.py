@@ -116,7 +116,7 @@ def test_discovery_toolset_includes_search() -> None:
 
 
 def test_search_uses_rag_search(monkeypatch) -> None:
-    import agentic_runtime.rag as rag
+    import personal_assistant.rag as rag
 
     monkeypatch.setattr(rag, "search", lambda query: f"wynik:{query}")
 

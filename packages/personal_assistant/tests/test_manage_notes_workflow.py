@@ -9,7 +9,8 @@ from personal_assistant.deciders import make_manage_notes_decider
 from agentic_runtime.execution import WorkflowExecution
 from personal_assistant.agents.manage_notes.commands import AddNoteCommand, EditNoteCommand
 from personal_assistant.agents.manage_notes.manage_notes_workflow import ManageNotesWorkflow
-from personal_assistant.messaging.events import CreatedNote, NoteUpdated, UserCommand, UserMessage
+from personal_assistant.messaging.events import CreatedNote, NoteUpdated
+from agentic_runtime.messaging.messages import ConversationData, RecordedMessageMetadata, UserCommand, UserMessage
 from agentic_runtime.reactor import LLMReactor
 from agentic_runtime.routing import make_llm_routing
 
@@ -66,11 +67,11 @@ def test_manage_notes_workflow_returns_text_and_publishes_created_note_event() -
 
     result = workflow.handle(
         UserMessage(
-            runtime_id="runtime-1",
-            domain="manage_notes",
-            source="user",
-            target="manage_notes",
-            text="Dodaj notatkę",
+            data=ConversationData(role="user", text="Dodaj notatkę"),
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1", domain="manage_notes",
+                source="user", target="manage_notes",
+            ),
         ),
     )
 
@@ -81,7 +82,7 @@ def test_manage_notes_workflow_returns_text_and_publishes_created_note_event() -
     created = [e for e in result.emitted_events if isinstance(e, CreatedNote)][0]
     assert created.note_name == "Projekt"
     assert created.note_content == "Plan sprintu"
-    assert created.source == "manage_notes"
+    assert created.metadata.source == "manage_notes"
 
 
 def test_manage_notes_workflow_publishes_note_updated_for_edit_note() -> None:
@@ -104,11 +105,11 @@ def test_manage_notes_workflow_publishes_note_updated_for_edit_note() -> None:
 
     result = workflow.handle(
         UserMessage(
-            runtime_id="runtime-1",
-            domain="manage_notes",
-            source="user",
-            target="manage_notes",
-            text="Edytuj notatkę",
+            data=ConversationData(role="user", text="Edytuj notatkę"),
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1", domain="manage_notes",
+                source="user", target="manage_notes",
+            ),
         ),
     )
 
@@ -130,11 +131,11 @@ def test_manage_notes_workflow_returns_plain_text_without_publishing_event() -> 
 
     result = workflow.handle(
         UserMessage(
-            runtime_id="runtime-1",
-            domain="manage_notes",
-            source="user",
-            target="manage_notes",
-            text="Pokaż notatki",
+            data=ConversationData(role="user", text="Pokaż notatki"),
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1", domain="manage_notes",
+                source="user", target="manage_notes",
+            ),
         ),
     )
 
@@ -154,11 +155,11 @@ def test_manage_notes_workflow_resets_agent_with_command() -> None:
     response = ManageNotesWorkflow.handle(
         workflow,
         UserCommand(
-            runtime_id="runtime-1",
-            domain="manage_notes",
-            source="runtime",
-            target="manage_notes",
-            name="reset",
+            type="reset",
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1", domain="manage_notes",
+                source="runtime", target="manage_notes",
+            ),
         ),
     )
 
@@ -192,11 +193,11 @@ def test_manage_notes_workflow_respond_path_emits_domain_events_single_pass() ->
 
     result = workflow.handle(
         UserMessage(
-            runtime_id="runtime-1",
-            domain="manage_notes",
-            source="user",
-            target="manage_notes",
-            text="Dodaj notatkę Projekt",
+            data=ConversationData(role="user", text="Dodaj notatkę Projekt"),
+            metadata=RecordedMessageMetadata(
+                runtime_id="runtime-1", domain="manage_notes",
+                source="user", target="manage_notes",
+            ),
         ),
     )
 

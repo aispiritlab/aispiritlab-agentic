@@ -21,7 +21,7 @@ from agentic.workflow.messages import (
 from agentic_runtime.execution import ExecutionTurnRecord, WorkflowExecution
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.output_handler import workflow_output_handler
-
+from agentic_runtime.workspaces import build_session_id
 from personal_assistant.messaging.events import CreatedNote
 from personal_assistant.output_handlers import build_organizer_output_handler
 import personal_assistant.runtime as runtime_module
@@ -97,6 +97,10 @@ def _build_runtime(
     runtime._stop_lock = threading.Lock()
     runtime._stopped = False
     runtime.runtime_id = "runtime-1"
+    runtime.user_slug = "default"
+    runtime.user_name = "default"
+    runtime.workspace_slug = "default"
+    runtime.session_id = build_session_id("default", "default")
     runtime.bus = InMemoryMessageBus()
     runtime._tracer = NoopLLMTracer()
     runtime.router = SimpleNamespace(
@@ -168,6 +172,75 @@ def test_new_runtime_id_uses_uuidv7() -> None:
     runtime_id = AgenticRuntime._new_runtime_id()
 
     assert UUID(runtime_id).version == 7
+
+
+def test_runtime_init_sets_store_bus_and_session_id(monkeypatch) -> None:
+    class _StubStore:
+        def close(self) -> None:
+            return None
+
+    class _StubImageCall:
+        def close(self) -> None:
+            return None
+
+    class _StubTaskRunner:
+        def submit_resync(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    class _StubWorkflow:
+        def __init__(self, agent_name: str) -> None:
+            self.description = SimpleNamespace(agent_name=agent_name)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(runtime_module, "init_tracing", lambda: None)
+    monkeypatch.setattr(runtime_module, "create_tracer", lambda enabled=True: NoopLLMTracer())
+    monkeypatch.setattr(runtime_module, "SQLiteMessageStore", lambda **_: _StubStore())
+    monkeypatch.setattr(runtime_module, "RouterAgent", lambda: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(
+        runtime_module,
+        "KnowledgeBaseTaskRunner",
+        lambda **_: _StubTaskRunner(),
+    )
+    monkeypatch.setattr(runtime_module, "build_organizer_output_handler", lambda workflow: lambda message: [])
+    monkeypatch.setattr(runtime_module, "build_rag_output_handler", lambda runner: lambda message: [])
+    monkeypatch.setattr(runtime_module, "OpenAIProvider", SimpleNamespace(configure=lambda **_: None))
+    monkeypatch.setattr(runtime_module, "MfluxImageCall", lambda **_: _StubImageCall())
+    monkeypatch.setattr(
+        runtime_module,
+        "LLMCall",
+        lambda model_name, tracer: SimpleNamespace(close=lambda: None),
+    )
+    monkeypatch.setattr(
+        AgenticRuntime,
+        "_build_workflows",
+        lambda self, bus: (
+            _StubWorkflow("personalize"),
+            _StubWorkflow("manage_notes"),
+            _StubWorkflow("discovery_notes"),
+            _StubWorkflow("sage"),
+            _StubWorkflow("organizer"),
+        ),
+    )
+
+    runtime = AgenticRuntime(user_slug="alice", workspace_slug="research")
+
+    assert runtime.user_slug == "alice"
+    assert runtime.workspace_slug == "research"
+    assert runtime.session_id == "user:alice:ws:research"
+    assert hasattr(runtime, "store")
+    assert hasattr(runtime, "bus")
+    assert runtime.workflows.keys() == {
+        "personalize",
+        "manage_notes",
+        "discovery_notes",
+        "sage",
+        "organizer",
+    }
 
 
 def test_given_user_message_when_runtime_handles_then_routes_to_workflow() -> None:
@@ -507,7 +580,7 @@ def test_given_personalization_finished_when_summary_then_hides_organizer_and_pe
             )
         ),
     }
-    monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda: True)
+    monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda _user=None: True)
 
     # when
     summary = runtime._available_workflows_summary()
@@ -545,10 +618,10 @@ def test_given_personalization_not_finished_when_resolve_then_allows_personalize
     runtime.router = SimpleNamespace(route=lambda text, summary: "personalize")
 
     # when / then
-    monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda: False)
+    monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda _user=None: False)
     assert runtime._resolve_workflow("hej") is personalize_workflow
 
-    monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda: True)
+    monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda _user=None: True)
     assert runtime._resolve_workflow("hej") is None
 
 
