@@ -89,6 +89,7 @@ members = [
     "packages/workshops",
     "packages/personal_assistant",
     "packages/agentic_graph",
+    "packages/providers",
 ]
 
 [tool.uv.sources]
