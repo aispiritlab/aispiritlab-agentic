@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from agentic.agent import AgentResult
-from agentic.image_generation_call import ImageGenerationResult
+from providers.image.mflux import ImageGenerationResult
 from agentic.observability import NoopLLMTracer, TraceSnapshot
 from agentic.workflow.messages import (
     AssistantMessage,

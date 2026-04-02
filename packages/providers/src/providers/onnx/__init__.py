@@ -1,4 +1,4 @@
-from agentic.models.config import ModelConfig
+from providers.models.config import ModelConfig
 
 
 class OnnxAsrProvider:

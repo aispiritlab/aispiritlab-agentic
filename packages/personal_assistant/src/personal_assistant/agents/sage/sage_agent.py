@@ -4,7 +4,7 @@ from agentic.core_agent import CoreAgentic
 from agentic.history import History
 from agentic.message import SystemMessage
 from agentic.metadata import Description
-from agentic.models import ModelProvider
+from providers.orchestrator import ModelProvider
 
 from personal_assistant.settings import settings
 

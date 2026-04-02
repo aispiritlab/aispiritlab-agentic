@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
 from agentic.agent import Agent
-from agentic.models.response import ModelResponse
+from providers.models.response import ModelResponse
 from agentic.prompts import GemmaPromptBuilder
 from agentic.tools import ToolCallCommand, Toolset, Toolsets
 

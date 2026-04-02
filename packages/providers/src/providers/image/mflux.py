@@ -10,7 +10,7 @@ from threading import Lock
 import time
 from uuid import uuid4
 
-from agentic.providers.mlx.memory import clear_mlx_cache
+from providers.mlx.memory import clear_mlx_cache
 
 
 @dataclass(frozen=True, slots=True)

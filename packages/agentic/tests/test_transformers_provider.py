@@ -2,8 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agentic.models import ModelConfig, ModelProvider
-from agentic.models.response import ModelResponse
+from providers.models import ModelConfig
+from providers.models.response import ModelResponse
+from providers.orchestrator import ModelProvider
 
 
 # ── Stubs ─────────────────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ class StubTransformersProvider:
 
     @classmethod
     def build_model(cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object) -> object:
-        from agentic.providers.transformers.transformers_model import TransformersModel
+        from providers.transformers.transformers_model import TransformersModel
 
         return TransformersModel(backend, model_name, config=config)
 
@@ -102,7 +103,7 @@ def test_transformers_provider_loads_via_model_provider() -> None:
 
 
 def test_transformers_model_response_with_string_prompt() -> None:
-    from agentic.providers.transformers.transformers_model import TransformersModel
+    from providers.transformers.transformers_model import TransformersModel
 
     backend = (StubModel(), StubTokenizer())
     model = TransformersModel(backend, "test-model")
@@ -114,7 +115,7 @@ def test_transformers_model_response_with_string_prompt() -> None:
 
 
 def test_transformers_model_response_with_messages() -> None:
-    from agentic.providers.transformers.transformers_model import TransformersModel
+    from providers.transformers.transformers_model import TransformersModel
 
     backend = (StubModel(), StubTokenizer())
     model = TransformersModel(backend, "test-model")
@@ -127,7 +128,7 @@ def test_transformers_model_response_with_messages() -> None:
 
 
 def test_transformers_model_raises_when_closed() -> None:
-    from agentic.providers.transformers.transformers_model import TransformersModel
+    from providers.transformers.transformers_model import TransformersModel
 
     backend = (StubModel(), StubTokenizer())
     model = TransformersModel(backend, "test-model")
@@ -137,7 +138,7 @@ def test_transformers_model_raises_when_closed() -> None:
 
 
 def test_transformers_model_tracks_token_counts() -> None:
-    from agentic.providers.transformers.transformers_model import TransformersModel
+    from providers.transformers.transformers_model import TransformersModel
 
     backend = (StubModel(), StubTokenizer())
     model = TransformersModel(backend, "test-model")

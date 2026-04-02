@@ -90,14 +90,38 @@ pull-model: ## Pull default LLM model
 # Infrastructure                                                                #
 #################################################################################
 
+.PHONY: env
+env: ## Copy .env.example to .env (if missing)
+	@test -f .env && echo ".env already exists — skipping." || (cp .env.example .env && echo ".env created from .env.example")
+
+.PHONY: docker-build
+docker-build: ## Build the root Docker image
+	docker build -t $(PROJECT_NAME) .
+
 .PHONY: mlflow
-mlflow: ## Start MLflow with docker-compose
+mlflow: ## Start MLflow stack (Postgres + MinIO + MLflow server)
 	docker compose -f containers/docker-compose.yml up
+
+.PHONY: mlflow-down
+mlflow-down: ## Stop MLflow stack
+	docker compose -f containers/docker-compose.yml down
 
 .PHONY: mlflow-ui
 mlflow-ui: ## Start MLflow UI without Docker
 	MLFLOW_SERVER_CORS_ALLOWED_ORIGINS="http://0.0.0.0:5001,http://localhost:5001,http://127.0.0.1:5001" \
 		uv run mlflow ui --host 0.0.0.0 --port 5001 --backend-store-uri sqlite:///data/mlflow.db
+
+.PHONY: mlflow-logs
+mlflow-logs: ## Tail MLflow stack logs
+	docker compose -f containers/docker-compose.yml logs -f
+
+.PHONY: redis
+redis: ## Start standalone Redis for local distributed dev
+	docker run --rm --name ai-spirit-redis -p 6379:6379 redis:8-alpine
+
+.PHONY: redis-stop
+redis-stop: ## Stop standalone Redis container
+	docker stop ai-spirit-redis
 
 .PHONY: lab6-up
 lab6-up: ## Start distributed Lab 6 stack
@@ -106,6 +130,20 @@ lab6-up: ## Start distributed Lab 6 stack
 .PHONY: lab6-down
 lab6-down: ## Stop distributed Lab 6 stack
 	docker compose -f containers/docker-compose.lab6.yml down
+
+.PHONY: lab6-logs
+lab6-logs: ## Tail distributed Lab 6 stack logs
+	docker compose -f containers/docker-compose.lab6.yml logs -f
+
+.PHONY: lab6-restart
+lab6-restart: ## Restart distributed Lab 6 stack (rebuild)
+	docker compose -f containers/docker-compose.lab6.yml down
+	docker compose -f containers/docker-compose.lab6.yml up --build
+
+.PHONY: infra-status
+infra-status: ## Show status of all infrastructure containers
+	@echo "=== MLflow stack ===" && docker compose -f containers/docker-compose.yml ps 2>/dev/null || true
+	@echo "\n=== Lab 6 stack ===" && docker compose -f containers/docker-compose.lab6.yml ps 2>/dev/null || true
 
 #################################################################################
 # Data                                                                          #

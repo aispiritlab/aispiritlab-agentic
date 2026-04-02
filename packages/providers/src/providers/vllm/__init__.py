@@ -5,8 +5,8 @@ from __future__ import annotations
 from threading import Lock
 from typing import Literal
 
-from agentic.models.config import ModelConfig
-from agentic.providers.vllm.vllm_model import VllmNativeModel, VllmOpenAIModel, VllmRayModel
+from providers.models.config import ModelConfig
+from providers.vllm.vllm_model import VllmNativeModel, VllmOpenAIModel, VllmRayModel
 
 VllmInferenceStrategy = Literal["native", "openai_compatible", "ray", "cli"]
 

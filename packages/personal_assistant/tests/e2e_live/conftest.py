@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from agentic.models import ModelProvider
+from providers.orchestrator import ModelProvider
 from agentic.observability import NoopLLMTracer
 from registry.prompts import (
     DECISION_PROMPT,

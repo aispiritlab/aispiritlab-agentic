@@ -13,6 +13,7 @@ dependencies = [
     "chat",
     "gradio",
     "knowledge-base",
+    "providers",
     "structlog>=25.5.0",
 ]
 

@@ -1,5 +1,6 @@
 from agentic.agent import Agent, AgentResult
-from agentic.models import ModelConfig, ModelProvider
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProvider
 from agentic.prompts import QwenPromptBuilder
 from agentic.tools import Toolset, Toolsets
 

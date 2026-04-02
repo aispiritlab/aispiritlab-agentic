@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from agentic.models import ModelConfig, ModelProvider
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProvider
 from agentic.prompts import GemmaPromptBuilder, PromptTemplate, QwenPromptBuilder
 from evaluation import EvaluationDefinition, ToolScenario, serialize_scenarios_to_json
 

@@ -8,13 +8,13 @@ from typing import Iterator, Literal
 
 from structlog import get_logger
 
-from agentic.models.config import ModelConfig
-from agentic.providers.api import OpenAIProvider
-from agentic.providers.mlx import MlxAudioProvider, MlxProvider
-from agentic.providers.mlx.mlx_vlm import MlxVlmProvider
-from agentic.providers.onnx import OnnxAsrProvider
-from agentic.providers.transformers import TransformersProvider
-from agentic.providers.vllm import VLLMProvider
+from providers.models.config import ModelConfig
+from providers.api import OpenAIProvider
+from providers.mlx import MlxAudioProvider, MlxProvider
+from providers.mlx.mlx_vlm import MlxVlmProvider
+from providers.onnx import OnnxAsrProvider
+from providers.transformers import TransformersProvider
+from providers.vllm import VLLMProvider
 
 logger = get_logger(__name__)
 

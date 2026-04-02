@@ -5,7 +5,7 @@ import os
 from typing import Any
 
 import pytest
-from agentic.models import ModelProvider
+from providers.orchestrator import ModelProvider
 from deepeval.metrics import StepEfficiencyMetric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase

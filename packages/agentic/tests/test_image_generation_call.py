@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import agentic.image_generation_call as image_generation_call_module
-from agentic.image_generation_call import MfluxImageCall
+import providers.image.mflux as image_generation_call_module
+from providers.image.mflux import MfluxImageCall
 
 
 def test_mflux_image_call_generates_file_and_metadata(monkeypatch, tmp_path: Path) -> None:

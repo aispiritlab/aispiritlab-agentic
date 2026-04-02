@@ -2,7 +2,7 @@ from contextlib import contextmanager
 
 from agentic.agent import Agent
 from agentic.message import SystemMessage, ToolMessage
-from agentic.models.response import ModelResponse
+from providers.models.response import ModelResponse
 from agentic.prompts import GemmaPromptBuilder
 from agentic.tools import Toolset, Toolsets
 

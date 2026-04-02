@@ -3,10 +3,10 @@ from typing import Any, Protocol
 
 from agentic.agent import Agent, AgentResult
 from agentic.message import Message
-from agentic.models import ModelProvider, ModelConfig
 from agentic.observability import LLMTracer
 from agentic.prompts import PromptBuilder
-from agentic.providers.provider import ModelProviderType
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProvider, ModelProviderType
 from agentic.tools import ToolRunResult, Toolsets
 
 

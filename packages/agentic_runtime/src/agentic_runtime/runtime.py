@@ -10,7 +10,7 @@ import threading
 from typing import Any, Callable, Protocol
 import uuid
 
-from agentic.providers.api import OpenAIProvider
+from providers.api import OpenAIProvider
 from agentic.workflow import WorkflowRuntime
 from agentic.workflow._workflow import AgenticWorkflow
 from structlog import get_logger

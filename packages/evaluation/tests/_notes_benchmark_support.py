@@ -28,7 +28,7 @@ from deepeval.test_case import (
     ToolCallParams,
 )
 
-from agentic.models import ModelProvider as AgenticModelProvider
+from providers.orchestrator import ModelProvider as AgenticModelProvider
 import agentic.prompts as agentic_prompts
 from personal_assistant.agents.manage_notes.evaluation import NOTES_EVALUATION, NOTES_TOOL_SCENARIOS
 from evaluation import ConversationScenario, ToolScenario, build_conversation_scenarios

@@ -8,7 +8,8 @@ import re
 
 from agentic.integrations.search_provider import LangSearchProvider, SearchProvider, normalize_results
 from agentic.llm_call import LLMCall
-from agentic.providers.api import OpenAIProvider
+from agentic.workflow.messages import ConversationData, RecordedMessageMetadata
+from providers.api import OpenAIProvider
 from agentic_runtime.distributed import AgenticServiceDiscovery
 from agentic_runtime.distributed.service import DistributedService
 from agentic_runtime.messaging.messages import AssistantMessage, Message, TurnCompleted, UserMessage
@@ -189,18 +190,22 @@ class PlannerHandler:
             return ()
 
         search_agent = discovery.find("web-search")
-        queries = self.planner.plan(message.text)
+        question = message.data.text if isinstance(message.data, ConversationData) else ""
+        queries = self.planner.plan(question)
         return (
             SearchPlanned(
-                runtime_id=message.runtime_id,
-                turn_id=message.turn_id,
-                domain=message.domain or "lab6",
-                source="planner",
-                target=search_agent.agent_name,
-                text=message.text,
-                question=message.text,
+                question=question,
                 queries=queries,
-                reply_target=message.source or "chat",
+                reply_target=message.metadata.source or "chat",
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain or "lab6",
+                    source="planner",
+                    target=search_agent.agent_name,
+                    trace=message.metadata.trace,
+                ),
             ),
         )
 
@@ -241,15 +246,19 @@ class SearchHandler:
         )
         return (
             SummaryRequested(
-                runtime_id=message.runtime_id,
-                turn_id=message.turn_id,
-                domain=message.domain,
-                source="search",
-                target=summary_agent.agent_name,
                 question=message.question,
                 queries=message.queries,
                 results=compacted,
                 reply_target=message.reply_target,
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain,
+                    source="search",
+                    target=summary_agent.agent_name,
+                    trace=message.metadata.trace,
+                ),
             ),
         )
 
@@ -273,21 +282,29 @@ class SummaryHandler:
         final_text = self.summary.summarize(message.question, message.results)
         return (
             AssistantMessage(
-                runtime_id=message.runtime_id,
-                turn_id=message.turn_id,
-                domain=message.domain,
-                source="summary",
-                target=message.reply_target,
-                text=final_text,
+                data=ConversationData(role="assistant", text=final_text),
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain,
+                    source="summary",
+                    target=message.reply_target,
+                    trace=message.metadata.trace,
+                ),
             ),
             TurnCompleted(
-                runtime_id=message.runtime_id,
-                turn_id=message.turn_id,
-                domain=message.domain,
-                source="summary",
-                target=message.reply_target,
-                status="success",
-                payload={"workflow": "summary"},
+                data={"workflow": "summary"},
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain,
+                    source="summary",
+                    target=message.reply_target,
+                    status="success",
+                    trace=message.metadata.trace,
+                ),
             ),
         )
 

@@ -24,7 +24,7 @@ from typing import Any
 import pytest
 
 from agentic.llm_call import LLMCall
-from agentic.providers.api import OpenAIProvider
+from providers.api import OpenAIProvider
 from agentic_runtime.distributed.client import DistributedChatClient
 from agentic_runtime.distributed.discovery import AgenticServiceDiscovery
 from agentic_runtime.distributed.in_memory_transport import (

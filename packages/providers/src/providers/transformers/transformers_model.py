@@ -8,8 +8,8 @@ from typing import Any
 
 from structlog import get_logger
 
-from agentic.models.config import ModelConfig
-from agentic.models.response import ModelResponse
+from providers.models.config import ModelConfig
+from providers.models.response import ModelResponse
 
 logger = get_logger(__name__)
 

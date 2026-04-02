@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, Sequence
 
-from agentic.providers.api.http_client import HttpClient
+from providers.api.http_client import HttpClient
 
 
 @dataclass(frozen=True, slots=True)

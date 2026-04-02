@@ -6,7 +6,7 @@ import contextvars
 import threading
 from typing import TYPE_CHECKING
 
-from agentic.models import ModelProvider
+from providers.orchestrator import ModelProvider
 from agentic.workflow.messages import (
     AssistantMessage,
     Command,

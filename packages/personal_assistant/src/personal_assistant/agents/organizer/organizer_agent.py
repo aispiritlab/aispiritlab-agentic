@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agentic.history import History
-from agentic.models import ModelProvider
+from providers.orchestrator import ModelProvider
 from agentic.message import SystemMessage
 from agentic.metadata import Description
 from agentic.core_agent import CoreAgentic

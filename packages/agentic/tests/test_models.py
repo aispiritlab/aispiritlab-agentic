@@ -4,8 +4,9 @@ import time
 import pytest
 
 from agentic.agent import Agent
-from agentic.models import ModelConfig, ModelProvider
-from agentic.models.response import ModelResponse
+from providers.models import ModelConfig
+from providers.models.response import ModelResponse
+from providers.orchestrator import ModelProvider
 from agentic.prompts import GemmaPromptBuilder
 
 

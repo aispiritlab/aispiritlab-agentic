@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from agentic.models.response import ModelResponse
+from providers.models.response import ModelResponse
 import agentic.vlm_call as vlm_call_module
 from agentic.vlm_call import VLMCall
 

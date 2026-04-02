@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agentic.core_agent import CoreAgentResponse, CoreAgentic
-from agentic.models import ModelConfig
+from providers.models import ModelConfig
 from agentic.prompts import QwenPromptBuilder, PromptTemplate
 from personal_assistant.settings import settings
 from agentic_runtime.trace import create_tracer  # framework utility

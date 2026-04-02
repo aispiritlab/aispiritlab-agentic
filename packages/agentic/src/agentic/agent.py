@@ -11,8 +11,8 @@ import structlog
 from agentic.history import History
 from agentic.memory import InMemory, Memory
 from agentic.message import Message, SystemMessage, UserMessage
-from agentic.models import ModelProvider
-from agentic.models.response import ModelResponse
+from providers.models.response import ModelResponse
+from providers.orchestrator import ModelProvider
 from agentic.observability import LLMTracer, NoopLLMTracer, TraceSnapshot
 from agentic.prompts import PromptBuilder as PromptBuilder
 from agentic.response_parser import ResponseParser

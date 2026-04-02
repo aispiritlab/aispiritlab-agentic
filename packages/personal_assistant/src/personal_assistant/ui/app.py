@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from agentic.image_generation_call import ImageGenerationResult
-from agentic.models import ModelProvider
-from agentic.providers.api.http_client import ModelConnectionError
+from providers.image.mflux import ImageGenerationResult
+from providers.orchestrator import ModelProvider
+from providers.api.http_client import ModelConnectionError
 from agentic.voice import convert_audio, is_empty_transcription
 from agentic_runtime.users import (
     create_user as _create_user_profile,

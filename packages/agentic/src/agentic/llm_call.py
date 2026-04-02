@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from agentic.core_agent import CoreAgentResponse, CoreAgentic
-from agentic.models.config import ModelConfig
 from agentic.observability import LLMTracer
 from agentic.prompts import ChatPromptBuilder
-from agentic.providers.provider import ModelProviderType
+from providers.models.config import ModelConfig
+from providers.orchestrator import ModelProviderType
 
 _DEFAULT_SYSTEM_PROMPT = "Jesteś pomocnym asystentem AI. Odpowiadaj po polsku."
 

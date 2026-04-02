@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agentic.core_agent import CoreAgentic
-from agentic.models import ModelConfig
+from providers.models import ModelConfig
 from agentic.prompts import QwenPromptBuilder
 from agentic.workflow import (
     LLMReactor,

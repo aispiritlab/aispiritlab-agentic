@@ -5,14 +5,13 @@ import json
 import pytest
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
-    CreatedNote,
     Event,
-    NoteUpdated,
     ToolCallEvent,
     ToolResultMessage,
     TurnCompleted,
     TurnStarted,
 )
+from personal_assistant.messaging.events import CreatedNote, NoteUpdated
 
 pytestmark = pytest.mark.agent_e2e_live
 

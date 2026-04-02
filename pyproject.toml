@@ -16,6 +16,7 @@ dependencies = [
     "knowledge-base",
     "agentic-runtime",
     "personal-assistant",
+    "workshops",
     "chat",
     "cli",
     "core",
@@ -28,6 +29,7 @@ dependencies = [
     "deepeval>=3.9.2",
     "cachetools>=7.0.5",
     "onnxruntime>=1.24.3",
+    "providers",
     "mlx>=0.31.1; sys_platform == 'darwin'",
     "mlx-lm>=0.31.1; sys_platform == 'darwin'",
     "mlx-vlm>=0.4.1; sys_platform == 'darwin'",
@@ -46,12 +48,17 @@ dependencies = [
     "httpx>=0.28.1",
     "tenacity>=9.1.4",
     "mflux>=0.17.0; sys_platform == 'darwin'",
+    "gradio>=6.9.0",
+    "numpy>=2.4.4",
+    "regex>=2026.3.32",
 ]
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
-    "ruff",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",
+    "ruff>=0.15.9",
     "ty>=0.0.25",
 ]
 
@@ -104,4 +111,6 @@ evaluation = { workspace = true }
 dataloader = { workspace = true }
 personal_assistant = { workspace = true }
 agentic_graph = { workspace = true }
+providers = { workspace = true }
+workshops = { workspace = true }
 mlx_audio = { git = "https://github.com/mkubasz/mlx-audio" }

@@ -10,6 +10,7 @@ requires-python = "==3.14.*"
 dependencies = [
     "agentic",
     "agentic-runtime",
+    "providers",
     "rich>=14.0.0",
     "textual>=3.0.0",
 ]

@@ -1,6 +1,6 @@
 import pytest
 
-from agentic.models.response import ModelResponse
+from providers.models.response import ModelResponse
 from agentic.observability import (
     MlflowLLMTracer,
     MlflowSpanHandle,

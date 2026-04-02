@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from threading import Lock
 
-from agentic.models.config import ModelConfig
-from agentic.providers.transformers.transformers_model import TransformersModel
+from providers.models.config import ModelConfig
+from providers.transformers.transformers_model import TransformersModel
 
 
 class TransformersProvider:

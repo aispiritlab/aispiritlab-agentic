@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from threading import Lock
 
-from agentic.models.config import ModelConfig
-from agentic.providers.api.api_model import ApiModel
-from agentic.providers.api.http_client import HttpClient
+from providers.models.config import ModelConfig
+from providers.api.api_model import ApiModel
+from providers.api.http_client import HttpClient
 
 
 class OpenAIProvider:

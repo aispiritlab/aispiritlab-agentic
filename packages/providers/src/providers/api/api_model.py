@@ -8,10 +8,10 @@ from typing import Any
 
 from structlog import get_logger
 
-from agentic.models.config import ModelConfig
-from agentic.models.response import ModelResponse
-from agentic.providers.api.http_client import HttpClient
-from agentic.providers.api.openai_schema import (
+from providers.models.config import ModelConfig
+from providers.models.response import ModelResponse
+from providers.api.http_client import HttpClient
+from providers.api.openai_schema import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatMessage,

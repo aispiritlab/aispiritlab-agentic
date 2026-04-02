@@ -5,7 +5,7 @@ import pytest
 
 from agentic.agent import Agent, AgentResult, Context
 from agentic.message import SystemMessage
-from agentic.models.response import ModelResponse
+from providers.models.response import ModelResponse
 from agentic.prompts import GemmaPromptBuilder
 from agentic.tools import ToolCallCommand, ToolContext, Toolset, Toolsets
 

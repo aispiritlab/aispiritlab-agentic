@@ -6,9 +6,9 @@ import threading
 from typing import Any
 import uuid
 
-from agentic.image_generation_call import ImageGenerationResult, MfluxImageCall
+from providers.image.mflux import ImageGenerationResult, MfluxImageCall
 from agentic.llm_call import LLMCall
-from agentic.providers.api import OpenAIProvider
+from providers.api import OpenAIProvider
 from agentic.workflow import WorkflowRuntime
 from agentic.workflow._workflow import AgenticWorkflow
 from agentic.workflow.messages import (

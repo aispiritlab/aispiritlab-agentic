@@ -48,7 +48,16 @@ _BASE_SERIALIZABLE_TYPES = (
     UserCommand,
     UserMessage,
 )
-_TYPE_MAP = {record_type.__name__: record_type for record_type in _BASE_SERIALIZABLE_TYPES}
+
+
+def _type_key(record_type: type[object]) -> str:
+    return f"{record_type.__module__}:{record_type.__qualname__}"
+
+
+_TYPE_MAP: dict[str, type[object]] = {}
+for _record_type in _BASE_SERIALIZABLE_TYPES:
+    _TYPE_MAP[_record_type.__name__] = _record_type
+    _TYPE_MAP[_type_key(_record_type)] = _record_type
 
 _forwarding = False
 
@@ -57,6 +66,7 @@ def _mirror_from_workflow(*record_types: type[object]) -> None:
     """Callback: when the workflow serialization module registers types, mirror them here."""
     for record_type in record_types:
         _TYPE_MAP.setdefault(record_type.__name__, record_type)
+        _TYPE_MAP.setdefault(_type_key(record_type), record_type)
 
 
 add_registration_hook(_mirror_from_workflow)
@@ -66,6 +76,7 @@ def register_record_types(*record_types: type[object]) -> None:
     global _forwarding
     for record_type in record_types:
         _TYPE_MAP[record_type.__name__] = record_type
+        _TYPE_MAP[_type_key(record_type)] = record_type
     if not _forwarding:
         _forwarding = True
         try:
@@ -79,7 +90,7 @@ def serialize_record(record: object) -> str:
         raise TypeError(f"Cannot serialize non-dataclass record: {type(record)!r}")
 
     payload = asdict(record)
-    payload["__type__"] = type(record).__name__
+    payload["__type__"] = _type_key(type(record))
     return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
 
 
@@ -93,7 +104,11 @@ def deserialize_record(value: str | bytes) -> Any:
     if not isinstance(record_type_name, str):
         raise KeyError("Serialized record is missing __type__")
 
-    record_type = _TYPE_MAP[record_type_name]
+    record_type = _TYPE_MAP.get(record_type_name)
+    if record_type is None and ":" in record_type_name:
+        record_type = _TYPE_MAP.get(record_type_name.split(":", 1)[1].split(".")[-1])
+    if record_type is None:
+        raise KeyError(f"Unknown serialized record type: {record_type_name}")
     if isinstance(payload.get("metadata"), dict):
         metadata_payload = dict(payload["metadata"])
         trace_payload = metadata_payload.get("trace")

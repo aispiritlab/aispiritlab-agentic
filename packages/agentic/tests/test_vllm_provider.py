@@ -3,9 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from agentic.models import ModelConfig, ModelProvider
-from agentic.models.response import ModelResponse
-from agentic.providers.vllm import VLLMProvider
+from providers.models import ModelConfig
+from providers.models.response import ModelResponse
+from providers.orchestrator import ModelProvider
+from providers.vllm import VLLMProvider
 
 
 # ── Stubs ─────────────────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ class StubNativeProvider:
 
     @classmethod
     def build_model(cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object) -> object:
-        from agentic.providers.vllm.vllm_model import VllmNativeModel
+        from providers.vllm.vllm_model import VllmNativeModel
 
         return VllmNativeModel(backend, model_name, config=config)
 
@@ -103,7 +104,7 @@ class StubOpenAIProvider:
 
     @classmethod
     def build_model(cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object) -> object:
-        from agentic.providers.vllm.vllm_model import VllmOpenAIModel
+        from providers.vllm.vllm_model import VllmOpenAIModel
 
         return VllmOpenAIModel(model_name, backend, config=config)
 
@@ -168,7 +169,7 @@ class _StubSamplingParams:
 
 
 def test_vllm_native_model_response() -> None:
-    from agentic.providers.vllm.vllm_model import VllmNativeModel
+    from providers.vllm.vllm_model import VllmNativeModel
 
     model = VllmNativeModel(StubLLM(), "facebook/opt-125m")
     resp = model.response("Hello", sampling_params=_StubSamplingParams())
@@ -181,7 +182,7 @@ def test_vllm_native_model_response() -> None:
 
 
 def test_vllm_native_model_response_with_messages() -> None:
-    from agentic.providers.vllm.vllm_model import VllmNativeModel
+    from providers.vllm.vllm_model import VllmNativeModel
 
     model = VllmNativeModel(StubLLM(), "facebook/opt-125m")
     resp = model.response(
@@ -192,7 +193,7 @@ def test_vllm_native_model_response_with_messages() -> None:
 
 
 def test_vllm_native_model_raises_when_closed() -> None:
-    from agentic.providers.vllm.vllm_model import VllmNativeModel
+    from providers.vllm.vllm_model import VllmNativeModel
 
     model = VllmNativeModel(StubLLM(), "facebook/opt-125m")
     model.close()
@@ -215,7 +216,7 @@ def test_vllm_openai_provider_loads_via_model_provider() -> None:
 
 
 def test_vllm_openai_model_response() -> None:
-    from agentic.providers.vllm.vllm_model import VllmOpenAIModel
+    from providers.vllm.vllm_model import VllmOpenAIModel
 
     model = VllmOpenAIModel("test-model", StubOpenAIClient())
     resp = model.response("Hello!")
@@ -229,7 +230,7 @@ def test_vllm_openai_model_response() -> None:
 
 
 def test_vllm_openai_model_response_with_messages() -> None:
-    from agentic.providers.vllm.vllm_model import VllmOpenAIModel
+    from providers.vllm.vllm_model import VllmOpenAIModel
 
     model = VllmOpenAIModel("test-model", StubOpenAIClient())
     resp = model.response([
@@ -240,7 +241,7 @@ def test_vllm_openai_model_response_with_messages() -> None:
 
 
 def test_vllm_openai_model_raises_when_closed() -> None:
-    from agentic.providers.vllm.vllm_model import VllmOpenAIModel
+    from providers.vllm.vllm_model import VllmOpenAIModel
 
     model = VllmOpenAIModel("test-model", StubOpenAIClient())
     model.close()
@@ -252,7 +253,7 @@ def test_vllm_openai_model_raises_when_closed() -> None:
 
 
 def test_vllm_ray_model_response() -> None:
-    from agentic.providers.vllm.vllm_model import VllmRayModel
+    from providers.vllm.vllm_model import VllmRayModel
 
     def fake_dataset_factory(items: list[dict[str, str]]) -> SimpleNamespace:
         return SimpleNamespace()
@@ -268,7 +269,7 @@ def test_vllm_ray_model_response() -> None:
 
 
 def test_vllm_ray_model_raises_when_closed() -> None:
-    from agentic.providers.vllm.vllm_model import VllmRayModel
+    from providers.vllm.vllm_model import VllmRayModel
 
     model = VllmRayModel(StubRayProcessor(), "test-model")
     model.close()

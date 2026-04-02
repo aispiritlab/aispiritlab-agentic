@@ -1,4 +1,4 @@
-from agentic.providers.mlx.models.qwen import (
+from providers.sampling.qwen import (
     GenerationMode,
     SamplingPresetName,
     SamplingProfile,

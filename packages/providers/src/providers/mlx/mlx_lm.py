@@ -1,8 +1,8 @@
 from threading import Lock
 
-from agentic.models._models import Model
-from agentic.models.config import ModelConfig
-from agentic.providers.mlx.memory import clear_mlx_cache
+from providers.models._models import Model
+from providers.models.config import ModelConfig
+from providers.mlx.memory import clear_mlx_cache
 
 
 class MlxProvider:

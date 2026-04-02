@@ -7,8 +7,8 @@ from agentic.core_agent import CoreAgentic
 from agentic.integrations.search_provider import SearchProvider, normalize_results
 from agentic.message import ToolMessage
 from agentic.metadata import Description
-from agentic.models import ModelConfig
-from agentic.providers.provider import ModelProviderType
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProviderType
 from agentic.tools import Toolset, Toolsets
 
 from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder

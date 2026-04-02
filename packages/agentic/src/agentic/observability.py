@@ -9,7 +9,7 @@ from typing import Any, Callable, Iterator, Literal, Mapping, Protocol
 
 logger = logging.getLogger(__name__)
 
-from agentic.models.response import ModelResponse
+from providers.models.response import ModelResponse
 
 
 def _sanitize_tags(tags: Mapping[str, Any] | None) -> dict[str, str]:

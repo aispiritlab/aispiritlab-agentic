@@ -10,7 +10,7 @@ from rich.markdown import Markdown as RichMarkdown
 from rich.panel import Panel
 from rich.text import Text
 
-from agentic.image_generation_call import ImageGenerationResult
+from providers.image.mflux import ImageGenerationResult
 from personal_assistant import (
     ai_spirit_agent,
     chat_agent,

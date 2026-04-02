@@ -11,7 +11,7 @@ from typing import Any
 
 from agentic.integrations import TavilySearchProvider, ValyuSearchProvider
 from agentic.llm_call import LLMCall
-from agentic.providers.api import OpenAIProvider
+from providers.api import OpenAIProvider
 from agentic.specialized_agents.planner_agent import PlannerAgent
 from agentic.specialized_agents.router_agent import RouterAgent as GenericRouter
 from agentic.specialized_agents.search_agent import SearchAgent

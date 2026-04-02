@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agentic.prompts import ChatPromptBuilder, QwenPromptBuilder
-from agentic.providers.provider import ModelProviderType
+from providers.orchestrator import ModelProviderType
 
 
 def build_specialized_prompt_builder(

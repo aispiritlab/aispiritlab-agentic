@@ -1,4 +1,4 @@
-from agentic.providers.mlx.models.qwen import (
+from providers.sampling.qwen import (
     QWEN_DEFAULT_PRESET_BY_MODE,
     QWEN_SAMPLING_PRESETS,
     GenerationMode,
@@ -6,7 +6,6 @@ from agentic.providers.mlx.models.qwen import (
     SamplingProfile,
     resolve_sampling_profile,
 )
-from agentic.providers.provider import ModelProvider, ModelProviderType
 
 from ._models import Model, VLModel, VoiceModel
 from .config import ModelConfig
@@ -16,9 +15,7 @@ __all__ = [
     "GenerationMode",
     "Model",
     "ModelConfig",
-    "ModelProvider",
     "ModelResponse",
-    "ModelProviderType",
     "QWEN_DEFAULT_PRESET_BY_MODE",
     "QWEN_SAMPLING_PRESETS",
     "SamplingPresetName",

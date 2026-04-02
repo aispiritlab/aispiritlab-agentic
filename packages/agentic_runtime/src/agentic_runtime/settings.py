@@ -46,5 +46,9 @@ class Settings(BaseSettings):
     langsearch_api_key: str | None = None
     langsearch_base_url: str = "https://api.langsearch.com"
     langsearch_timeout: float = 20.0
+    lab6_search_results_per_query: int = 5
+    lab6_summary_max_results: int = 6
+    lab6_summary_snippet_chars: int = 400
+    lab6_summary_total_chars: int = 4000
 
 settings = Settings()

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from agentic.core_agent import CoreAgentic
 from agentic.metadata import Description
-from agentic.models import ModelConfig
 from agentic.prompts import PromptTemplate
-from agentic.providers.provider import ModelProviderType
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProviderType
 
 from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from agentic.integrations.search_provider import SearchResult
+from agentic.workflow.messages import ConversationData, RecordedMessageMetadata
 from agentic_runtime.distributed.registry import AgentSnapshot
 from agentic_runtime.messaging.messages import AssistantMessage, TurnCompleted, UserMessage
 from workshops.lab6.messages import SearchPlanned, SummaryRequested
@@ -70,11 +71,13 @@ class _SummaryStub:
 def test_planner_handler_emits_search_planned_for_live_search_agent() -> None:
     handler = PlannerHandler(planner=_PlannerStub())
     message = UserMessage(
-        runtime_id="runtime-1",
-        turn_id="turn-1",
-        domain="lab6",
-        source="chat",
-        text="Redis 8.6",
+        data=ConversationData(role="user", text="Redis 8.6"),
+        metadata=RecordedMessageMetadata(
+            runtime_id="runtime-1",
+            turn_id="turn-1",
+            domain="lab6",
+            source="chat",
+        ),
     )
 
     responses = handler(message, _FakeDiscovery({"web-search": "search"}))
@@ -82,7 +85,7 @@ def test_planner_handler_emits_search_planned_for_live_search_agent() -> None:
     assert len(responses) == 1
     planned = responses[0]
     assert isinstance(planned, SearchPlanned)
-    assert planned.target == "search"
+    assert planned.metadata.target == "search"
     assert planned.reply_target == "chat"
     assert planned.queries == ("Redis 8.6 latest", "Redis 8.6 docs")
 
@@ -90,14 +93,16 @@ def test_planner_handler_emits_search_planned_for_live_search_agent() -> None:
 def test_search_handler_emits_summary_request_with_deduplicated_results() -> None:
     handler = SearchHandler(search_provider=_SearchProviderStub(), results_per_query=5)
     message = SearchPlanned(
-        runtime_id="runtime-1",
-        turn_id="turn-1",
-        domain="lab6",
-        source="planner",
-        target="search",
         question="Redis 8.6",
         queries=("redis 8.6", "redis 8.6 release"),
         reply_target="chat",
+        metadata=RecordedMessageMetadata(
+            runtime_id="runtime-1",
+            turn_id="turn-1",
+            domain="lab6",
+            source="planner",
+            target="search",
+        ),
     )
 
     responses = handler(message, _FakeDiscovery({"summarize": "summary"}))
@@ -105,7 +110,7 @@ def test_search_handler_emits_summary_request_with_deduplicated_results() -> Non
     assert len(responses) == 1
     summary_request = responses[0]
     assert isinstance(summary_request, SummaryRequested)
-    assert summary_request.target == "summary"
+    assert summary_request.metadata.target == "summary"
     assert summary_request.reply_target == "chat"
     assert len(summary_request.results) == 2
     assert summary_request.results[0]["url"] == "https://example.com/a"
@@ -115,25 +120,27 @@ def test_search_handler_emits_summary_request_with_deduplicated_results() -> Non
 def test_summary_handler_emits_final_assistant_message_and_turn_completed() -> None:
     handler = SummaryHandler(summary=_SummaryStub())
     message = SummaryRequested(
-        runtime_id="runtime-1",
-        turn_id="turn-1",
-        domain="lab6",
-        source="search",
-        target="summary",
         question="Redis 8.6",
         queries=("redis 8.6",),
         results=({"title": "A", "url": "https://example.com/a", "snippet": "A"},),
         reply_target="chat",
+        metadata=RecordedMessageMetadata(
+            runtime_id="runtime-1",
+            turn_id="turn-1",
+            domain="lab6",
+            source="search",
+            target="summary",
+        ),
     )
 
     responses = handler(message, _FakeDiscovery({}))
 
     assert len(responses) == 2
     assert isinstance(responses[0], AssistantMessage)
-    assert responses[0].target == "chat"
-    assert responses[0].text == "summary:Redis 8.6:1"
+    assert responses[0].metadata.target == "chat"
+    assert responses[0].data.text == "summary:Redis 8.6:1"
     assert isinstance(responses[1], TurnCompleted)
-    assert responses[1].status == "success"
+    assert responses[1].metadata.status == "success"
 
 
 def test_compact_results_for_summary_limits_count_and_snippet_size() -> None:
