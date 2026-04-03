@@ -1,20 +1,22 @@
+"""ONNX Runtime ASR provider."""
+
+from __future__ import annotations
+
 from threading import Lock
 from typing import ClassVar
 
 from providers._proto import ProviderProto
-from providers.models._models import VoiceModel
 from providers.models.config import ModelConfig
-from providers.mlx.memory import clear_mlx_cache
 
 
-class MlxAudioProvider(ProviderProto):
-    model_provider_type: ClassVar[str] = "mlx-audio"
+class OnnxProvider(ProviderProto):
+    model_provider_type: ClassVar[str] = "onnx"
 
     @classmethod
     def load_backend(cls, model_name: str) -> object:
-        from mlx_audio.stt.utils import load_model
+        import onnx_asr
 
-        return load_model(model_name)
+        return onnx_asr.load_model(model_name, quantization="int8")
 
     @classmethod
     def build_model(
@@ -24,15 +26,16 @@ class MlxAudioProvider(ProviderProto):
         config: ModelConfig,
         *,
         inference_lock: Lock | None = None,
-    ) -> VoiceModel:
-        del model_name
-        return VoiceModel(backend, config=config, inference_lock=inference_lock)
+    ) -> object:
+        del model_name, config, inference_lock
+        return backend
 
     @classmethod
     def close_backend(cls, backend: object) -> None:
-        del backend
-        clear_mlx_cache()
+        close = getattr(backend, "close", None)
+        if callable(close):
+            close()
 
     @classmethod
-    def load(cls, model_name: str, config: ModelConfig) -> VoiceModel:
+    def load(cls, model_name: str, config: ModelConfig) -> object:
         return cls.build_model(cls.load_backend(model_name), model_name, config)

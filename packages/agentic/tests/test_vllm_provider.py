@@ -118,10 +118,10 @@ class StubOpenAIProvider:
 
 def test_vllm_provider_configure_sets_strategy() -> None:
     VLLMProvider.configure(inference_strategy="openai_compatible")
-    assert VLLMProvider._inference_strategy == "openai_compatible"
+    assert VLLMProvider._config.inference_strategy == "openai_compatible"
 
     VLLMProvider.configure(inference_strategy="native")
-    assert VLLMProvider._inference_strategy == "native"
+    assert VLLMProvider._config.inference_strategy == "native"
 
 
 def test_vllm_provider_configure_sets_all_fields() -> None:
@@ -132,11 +132,11 @@ def test_vllm_provider_configure_sets_all_fields() -> None:
         tensor_parallel_size=4,
         gpu_memory_utilization=0.8,
     )
-    assert VLLMProvider._inference_strategy == "ray"
-    assert VLLMProvider._base_url == "http://custom:9000/v1"
-    assert VLLMProvider._api_key == "my-key"
-    assert VLLMProvider._tensor_parallel_size == 4
-    assert VLLMProvider._gpu_memory_utilization == 0.8
+    assert VLLMProvider._config.inference_strategy == "ray"
+    assert VLLMProvider._config.base_url == "http://custom:9000/v1"
+    assert VLLMProvider._config.api_key == "my-key"
+    assert VLLMProvider._config.tensor_parallel_size == 4
+    assert VLLMProvider._config.gpu_memory_utilization == 0.8
 
     # Reset to defaults
     VLLMProvider.configure()

@@ -1,13 +1,19 @@
-Based on my search results, here's what I found about **Gemma 4**:
+## Piotr Durlej - Biografia i Informacje
 
-## Current Status: Unofficial/Sporadic Information Only
+Na podstawie wyników wyszukiwania, oto informacje o Piotrze Durleju:
 
-**Important:** As of now, Google has **NOT officially announced Gemma 4**. The official Google AI for Developers documentation only references models up to "Gemma 3" (including CodeGemma and PaliGemma variants).
+### Profesja i Doświadczenie
+- **Rola:** Doradca/Partner w startupach oraz lider produktów (Product Leader)
+- **Doświadczenie:** 10+ lat budowania i rozwoju platform e-commerce (marketplaces) oraz SaaS produktów
+- **Lokalizacja:** Warszawa, Polska
 
-### What We Know From Recent Reports:
+### Kariera Zawodowa
+| Firma | Rola | Opis |
+|-------|------|------|
+| Just Join IT / AppJobs.com | Head of Product @ Unveel.io | Był w budowie platformy e-commerce i aplikacji rekrutacyjnej |
+| flame (Startup Partner) | Partner | Pomaga rozwijać nowe pomysły biznesowe |
+| Publicis Groupe | Lead Product | Doświadczenie z marketplace'ami i SaaS produktami |
 
-1. **Spotted in LMSYS Chatbot Arena** - A benchmark platform has identified a model that claims to be Gemma 4 before any official Google announcement
-
-2. **"Leaked" Information on X/Twitter** - Some posts claim the model exists with specifications starting at 2B parameters, though this is unverified by Google
-
-3. **
+### Inne Informacje
+- **Interes:** Gamer, autor artykułów w StartUs Magazine
+- **Specjalizacja:** Ś

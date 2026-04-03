@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from threading import Lock
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from providers.models.config import ModelConfig
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderConfig:
+    """Base provider configuration — marker type for all configs."""
+
+
 @runtime_checkable
 class ProviderProto(Protocol):
-    model_provider_type: ClassVar[str]
 
     @classmethod
     def load_backend(cls, model_name: str) -> object: ...

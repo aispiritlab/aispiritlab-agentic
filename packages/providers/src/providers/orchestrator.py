@@ -10,24 +10,28 @@ from structlog import get_logger
 
 from providers.models.config import ModelConfig
 from providers.api import OpenAIProvider
+from providers.basic import BasicProvider
 from providers.mlx import MlxAudioProvider, MlxProvider
 from providers.mlx.mlx_vlm import MlxVlmProvider
-from providers.onnx import OnnxAsrProvider
+from providers.onnx import OnnxProvider
 from providers.transformers import TransformersProvider
+from providers.sglang import SGLangProvider
 from providers.vllm import VLLMProvider
 
 logger = get_logger(__name__)
 
-ModelProviderType = Literal["onnx", "mlx", "mlx-audio", "mlx-vlm", "openai", "vllm", "transformers"]
+ModelProviderType = Literal["onnx", "mlx", "mlx-audio", "mlx-vlm", "openai", "basic", "vllm", "transformers", "sglang"]
 
 SUPPORTED_PROVIDERS = {
+    "basic": BasicProvider,
     "mlx-audio": MlxAudioProvider,
     "mlx-vlm": MlxVlmProvider,
     "mlx": MlxProvider,
-    "onnx": OnnxAsrProvider,
+    "onnx": OnnxProvider,
     "openai": OpenAIProvider,
     "vllm": VLLMProvider,
     "transformers": TransformersProvider,
+    "sglang": SGLangProvider,
 }
 
 

@@ -1,12 +1,14 @@
 from threading import Lock
+from typing import ClassVar
 
+from providers._proto import ProviderProto
 from providers.models._models import Model
 from providers.models.config import ModelConfig
 from providers.mlx.memory import clear_mlx_cache
 
 
-class MlxProvider:
-    model_provider_type = "mlx"
+class MlxProvider(ProviderProto):
+    model_provider_type: ClassVar[str] = "mlx"
 
     @classmethod
     def load_backend(cls, model_name: str) -> tuple[object, object]:

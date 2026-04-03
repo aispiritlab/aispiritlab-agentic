@@ -1,14 +1,19 @@
 """Inference provider management — model providers, orchestrator, and subprocess clients."""
 
 from providers._platform import PlatformInfo, detect_platform
-from providers._proto import ProviderProto
+from providers._proto import ProviderConfig, ProviderProto
 from providers._settings import ProviderSettings
+from providers.basic import BasicProvider
+from providers.basic.config import HttpProviderConfig
 from providers.models.config import ModelConfig
 from providers.models.response import ModelResponse
 from providers.orchestrator import ModelProvider, ModelProviderType
+from providers.sglang import SGLangProvider
 from providers.schema import InferenceConfig, InferenceResponse
 
 __all__ = [
+    "BasicProvider",
+    "HttpProviderConfig",
     "InferenceConfig",
     "InferenceResponse",
     "ModelConfig",
@@ -16,8 +21,10 @@ __all__ = [
     "ModelProviderType",
     "ModelResponse",
     "PlatformInfo",
+    "ProviderConfig",
     "ProviderProto",
     "ProviderSettings",
+    "SGLangProvider",
     "detect_platform",
     "main",
 ]
