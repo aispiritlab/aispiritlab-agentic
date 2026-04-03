@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import structlog
 
+from agentic.capabilities import AbstractCapability, CombinedCapability, HookContext
+from agentic.exceptions import DEFAULT_RETRY, ModelRetry, RetryPolicy
 from agentic.history import History
 from agentic.memory import InMemory, Memory
 from agentic.message import Message, SystemMessage, UserMessage
@@ -17,11 +19,29 @@ from agentic.observability import LLMTracer, NoopLLMTracer, TraceSnapshot
 from agentic.prompts import PromptBuilder as PromptBuilder
 from agentic.response_parser import ResponseParser
 from agentic.structured_output import StructuredOutput
-from agentic.tools import JsonRepairer, Tool, ToolCall, Toolset, Toolsets, build_chat_tools
+from agentic.tools import (
+    JsonRepairer,
+    Tool,
+    ToolCall,
+    ToolContext,
+    ToolRunResult,
+    Toolset,
+    Toolsets,
+    build_chat_tools,
+)
+from agentic.usage import UNLIMITED, RequestUsage, RunUsage, UsageLimits
 
 logger = structlog.get_logger(__name__)
 
 ToolOutput = str
+
+
+def _stringify_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    return str(content)
 
 
 @dataclass(frozen=True)
@@ -66,11 +86,13 @@ class PromptArtifacts:
 class AgentResult:
     def __init__(
         self,
-        content: str,
+        content: Any,
         *,
         reasoning: str = "",
         tool_calls: list[ToolCall] | None = None,
         usage: dict[str, Any] | None = None,
+        request_usage: RequestUsage | None = None,
+        response_text: str | None = None,
         trace: TraceSnapshot | None = None,
         run_id: str | None = None,
         prompt_snapshot: PromptSnapshot | None = None,
@@ -81,11 +103,17 @@ class AgentResult:
         self.reasoning = reasoning
         self.tool_calls: list[ToolCall] = tool_calls or []
         self.usage = usage or {}
+        self.request_usage = request_usage or RequestUsage()
+        self.response_text = response_text if response_text is not None else _stringify_content(content)
         self.trace = trace
         self.run_id = run_id
         self.prompt_snapshot = prompt_snapshot
         self.attempt_no = attempt_no
         self.loop_iteration = loop_iteration
+
+    @property
+    def content_text(self) -> str:
+        return self.response_text
 
     @property
     def tool_call(self) -> ToolCall | None:
@@ -177,6 +205,9 @@ class Agent:
         json_repairer: JsonRepairer | None = None,
         structured_output: StructuredOutput | None = None,
         tracer: LLMTracer | None = None,
+        usage_limits: UsageLimits | None = None,
+        retry_policy: RetryPolicy = DEFAULT_RETRY,
+        capabilities: Sequence[AbstractCapability] | None = None,
     ) -> None:
         self._model_provider = model_provider
         self._toolsets = Toolsets.from_sources(
@@ -191,6 +222,10 @@ class Agent:
         self._agent_id = str(uuid4())
         self._tracer = tracer or NoopLLMTracer()
         self._response_parser = ResponseParser(self._toolsets, structured_output)
+        self._usage_limits = usage_limits or UNLIMITED
+        self._run_usage = RunUsage()
+        self._retry_policy = retry_policy
+        self._capability = CombinedCapability(capabilities) if capabilities else None
 
     @property
     def history(self) -> History:
@@ -209,6 +244,10 @@ class Agent:
         return self._context
 
     @property
+    def agent_id(self) -> str:
+        return self._agent_id
+
+    @property
     def system_prompt(self) -> PromptBuilder:
         return self._prompt_builder
 
@@ -216,7 +255,10 @@ class Agent:
     def system_prompt(self, value: PromptBuilder) -> None:
         self._prompt_builder = value
 
-    def _render_system_prompt(self) -> tuple[str, list[dict[str, Any]]]:
+    def _render_system_prompt(
+        self,
+        hook_context: HookContext | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
         tool_prompt = (
             "\n".join(
                 self._prompt_builder.tools_instruction(toolset)
@@ -228,6 +270,10 @@ class Agent:
         )
         system_template = self._prompt_builder.system_prompt or ""
         rendered = system_template.replace("{tools}", tool_prompt).strip()
+        if self._capability is not None and hook_context is not None:
+            extra_instructions = self._capability.get_instructions(hook_context)
+            if extra_instructions:
+                rendered = "\n\n".join(part for part in [rendered, extra_instructions] if part)
         return rendered, _serialize_tool_schema(self._toolsets)
 
     def _gather_context(self, message_text: str, current_context: Context) -> PromptContext:
@@ -258,6 +304,7 @@ class Agent:
         self,
         prompt_context: PromptContext,
         current_message: str | Message | None = None,
+        hook_context: HookContext | None = None,
     ) -> PromptArtifacts:
         # TODO: Inject prompt_context.memory_context once memory summaries are part
         # of the end-to-end prompt contract. For now prompts intentionally include
@@ -273,8 +320,12 @@ class Agent:
             ]
             if turn
         )
-        system_prompt_text, tool_schema = self._render_system_prompt()
-        prompt = self._prompt_builder.build_prompt(message_with_history, toolsets=self._toolsets)
+        system_prompt_text, tool_schema = self._render_system_prompt(hook_context)
+        prompt = self._prompt_builder.build_prompt(
+            message_with_history,
+            system_prompt=system_prompt_text,
+            toolsets=self._toolsets,
+        )
         prompt_name = getattr(self._prompt_builder, "external_prompt_name", None)
         return PromptArtifacts(
             prompt=prompt,
@@ -298,6 +349,37 @@ class Agent:
                 raise RuntimeError("Model is not available for inference.")
             return model.response(prompt, **kwargs)
 
+    @staticmethod
+    def _request_usage_from_response(model_response: ModelResponse) -> RequestUsage:
+        return RequestUsage(
+            prompt_tokens=model_response.prompt_tokens,
+            completion_tokens=model_response.completion_tokens,
+            total_tokens=model_response.total_tokens,
+            latency_ms=model_response.latency_ms,
+            model=model_response.model,
+            finish_reason=model_response.finish_reason,
+        )
+
+    @staticmethod
+    def _build_validation_retry_message(
+        original_message: str,
+        *,
+        error_text: str,
+        previous_response: str,
+    ) -> str:
+        return "\n".join(
+            [
+                "Your previous response could not be accepted.",
+                f"Validation error: {error_text}",
+                "Previous response:",
+                previous_response,
+                "",
+                "Respond again to the original request below with a corrected answer.",
+                "Original request:",
+                original_message,
+            ]
+        )
+
     def _to_result(
         self,
         model_response: ModelResponse,
@@ -307,6 +389,7 @@ class Agent:
         trace: TraceSnapshot | None,
     ) -> AgentResult:
         parsed = self._response_parser.parse(model_response.text)
+        req_usage = self._request_usage_from_response(model_response)
         return AgentResult(
             content=parsed.content,
             reasoning=parsed.reasoning,
@@ -319,6 +402,8 @@ class Agent:
                 "model": model_response.model,
                 "finish_reason": model_response.finish_reason,
             },
+            request_usage=req_usage,
+            response_text=model_response.text,
             trace=trace,
             run_id=run_id,
             prompt_snapshot=PromptSnapshot(
@@ -336,6 +421,42 @@ class Agent:
             self._history.add(UserMessage(message))
         self._history.add(SystemMessage(response_content))
 
+    @property
+    def run_usage(self) -> RunUsage:
+        return self._run_usage
+
+    def make_hook_context(
+        self,
+        run_id: str | None = None,
+        *,
+        turn: int = 0,
+        metadata: dict[str, Any] | None = None,
+    ) -> HookContext:
+        return HookContext(
+            agent_id=self._agent_id,
+            run_id=run_id or "",
+            turn=turn,
+            metadata=metadata or {},
+        )
+
+    def run_tool(
+        self,
+        payload: Any,
+        *,
+        tool_context: ToolContext | None = None,
+        tracer: LLMTracer | None = None,
+        run_id: str | None = None,
+        turn: int = 0,
+    ) -> ToolRunResult | None:
+        hook_context = self.make_hook_context(run_id, turn=turn)
+        return self._toolsets.run_tool(
+            payload,
+            tool_context=tool_context,
+            tracer=tracer,
+            capability=self._capability,
+            hook_context=hook_context,
+        )
+
     def run(
         self,
         message: str | Message,
@@ -346,10 +467,15 @@ class Agent:
         current_context = ctx or self._context
         message_text = str(message)
         run_id = str(uuid4())
+        self._run_usage = RunUsage()
 
         model_kwargs: dict[str, Any] = {}
         if images is not None:
             model_kwargs["image"] = images
+
+        attempt = 0
+        current_message: str | Message = message
+        hook_ctx = self.make_hook_context(run_id, turn=attempt)
 
         with self._tracer.agent(
             name="agent.run",
@@ -360,37 +486,107 @@ class Agent:
                 "history_enabled": current_context.add_history_to_context,
             },
         ) as span:
-            prompt_context = self._gather_context(message_text, current_context)
-            prompt_artifacts = self._build_prompt(prompt_context, message)
-            trace_messages = _build_trace_messages(message_text, prompt_artifacts)
-            chat_tools = build_chat_tools(prompt_artifacts.tool_schema)
+            try:
+                while True:
+                    self._usage_limits.check_before_request(self._run_usage)
+                    hook_ctx = self.make_hook_context(run_id, turn=attempt)
 
-            model_response = self._tracer.llm(
-                name="llm-call",
-                model=getattr(self._model_provider, "_model_name", None) or "",
-                messages=trace_messages,
-                tools=chat_tools,
-                extra_attributes={
-                    "agentic.prompt_hash": prompt_artifacts.prompt_hash,
-                    "agentic.tool_count": len(prompt_artifacts.tool_schema),
-                    **(
-                        {"agentic.prompt_name": prompt_artifacts.prompt_name}
-                        if prompt_artifacts.prompt_name
-                        else {}
-                    ),
-                },
-                invoke=lambda: self._call_model(prompt_artifacts.prompt, **model_kwargs),
-            )
+                    current_message_text = str(current_message)
+                    prompt_context = self._gather_context(current_message_text, current_context)
+                    prompt_artifacts = self._build_prompt(
+                        prompt_context,
+                        current_message,
+                        hook_context=hook_ctx,
+                    )
 
-            result = self._to_result(
-                model_response,
-                run_id=run_id,
-                prompt_artifacts=prompt_artifacts,
-                trace=self._tracer.current_trace,
-            )
-            span.update(output={"content": result.content[:200]})
-            self._store_history(message, result.content)
-            return result
+                    if self._capability is not None:
+                        prompt_artifacts = PromptArtifacts(
+                            prompt=self._capability.before_model_request(
+                                prompt_artifacts.prompt, hook_ctx
+                            ),
+                            system_prompt_text=prompt_artifacts.system_prompt_text,
+                            prompt_name=prompt_artifacts.prompt_name,
+                            prompt_hash=prompt_artifacts.prompt_hash,
+                            tool_schema=prompt_artifacts.tool_schema,
+                        )
+
+                    trace_messages = _build_trace_messages(current_message_text, prompt_artifacts)
+                    chat_tools = build_chat_tools(prompt_artifacts.tool_schema)
+
+                    model_response = self._tracer.llm(
+                        name="llm-call",
+                        model=getattr(self._model_provider, "_model_name", None) or "",
+                        messages=trace_messages,
+                        tools=chat_tools,
+                        extra_attributes={
+                            "agentic.prompt_hash": prompt_artifacts.prompt_hash,
+                            "agentic.tool_count": len(prompt_artifacts.tool_schema),
+                            **(
+                                {"agentic.prompt_name": prompt_artifacts.prompt_name}
+                                if prompt_artifacts.prompt_name
+                                else {}
+                            ),
+                        },
+                        invoke=lambda: self._call_model(prompt_artifacts.prompt, **model_kwargs),
+                    )
+
+                    if self._capability is not None:
+                        model_response = ModelResponse(
+                            text=self._capability.after_model_request(
+                                model_response.text, hook_ctx
+                            ),
+                            model=model_response.model,
+                            request_id=model_response.request_id,
+                            finish_reason=model_response.finish_reason,
+                            prompt_tokens=model_response.prompt_tokens,
+                            completion_tokens=model_response.completion_tokens,
+                            total_tokens=model_response.total_tokens,
+                            latency_ms=model_response.latency_ms,
+                        )
+
+                    self._run_usage.add(self._request_usage_from_response(model_response))
+
+                    try:
+                        result = self._to_result(
+                            model_response,
+                            run_id=run_id,
+                            prompt_artifacts=prompt_artifacts,
+                            trace=self._tracer.current_trace,
+                        )
+                    except ModelRetry as error:
+                        if self._capability is not None:
+                            self._capability.on_error(error, hook_ctx)
+                        self._usage_limits.check_after_request(self._run_usage)
+                        if not self._retry_policy.should_retry(attempt, error):
+                            raise
+                        attempt += 1
+                        current_message = self._build_validation_retry_message(
+                            message_text,
+                            error_text=str(error),
+                            previous_response=model_response.text,
+                        )
+                        continue
+
+                    if result.tool_calls:
+                        self._run_usage.add_tool_calls(len(result.tool_calls))
+                    self._usage_limits.check_after_request(self._run_usage)
+
+                    span.update(output={
+                        "content": result.content_text[:200],
+                        "usage.requests": self._run_usage.requests,
+                        "usage.input_tokens": self._run_usage.input_tokens,
+                        "usage.output_tokens": self._run_usage.output_tokens,
+                        "usage.total_tokens": self._run_usage.total_tokens,
+                        "usage.tool_calls": self._run_usage.tool_calls,
+                        "usage.latency_ms": self._run_usage.total_latency_ms,
+                        "usage.retry_attempts": attempt,
+                    })
+                    self._store_history(message, result.content_text)
+                    return result
+            except Exception as error:
+                if self._capability is not None and not isinstance(error, ModelRetry):
+                    self._capability.on_error(error, hook_ctx)
+                raise
 
     async def arun(self, message: str | Message, ctx: Context | None = None) -> AgentResult:
         return await asyncio.to_thread(self.run, message, ctx)

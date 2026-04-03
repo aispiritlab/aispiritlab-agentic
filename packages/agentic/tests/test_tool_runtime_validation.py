@@ -10,9 +10,9 @@ def test_execute_raises_for_missing_required_parameter() -> None:
 
     try:
         toolset.execute("add_note", {"note_name": "Pizza"})
-        assert False, "Expected ValueError for missing parameter"
-    except ValueError as error:
-        assert "brak wymaganych parametrów" in str(error)
+        assert False, "Expected ToolValidationError for missing parameter"
+    except Exception as error:
+        assert "missing required parameters" in str(error)
         assert "note" in str(error)
 
 
@@ -22,8 +22,9 @@ def test_run_tool_returns_error_message_for_invalid_parameters() -> None:
     result = toolsets.run_tool(("add_note", {"note_name": "Pizza"}))
     assert result is not None
 
-    assert "brak wymaganych parametrów" in result.output
+    assert "missing required parameters" in result.output
     assert "add_note" in result.output
+    assert result.retry is True
 
 
 def test_run_tool_accepts_raw_payload_and_returns_tool_definition() -> None:

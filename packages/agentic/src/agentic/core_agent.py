@@ -1,8 +1,10 @@
+import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from agentic.agent import Agent, AgentResult
-from agentic.message import Message
+from agentic.exceptions import DEFAULT_RETRY, ModelRetry, RetryPolicy
+from agentic.message import Message, ToolMessage
 from agentic.observability import LLMTracer
 from agentic.prompts import PromptBuilder
 from providers.models import ModelConfig
@@ -31,6 +33,11 @@ class CoreAgentResponse:
     tool_results: tuple[ToolRunResult, ...] = ()
 
 
+def _retry_as_exception(result: ToolRunResult) -> ModelRetry:
+    """Wrap a retryable ToolRunResult into a ModelRetry for policy checking."""
+    return ModelRetry(result.output)
+
+
 class CoreAgentic(Agentic):
 
     def __init__(
@@ -43,16 +50,20 @@ class CoreAgentic(Agentic):
         *,
         model_provider_type: ModelProviderType = "mlx",
         config: ModelConfig = ModelConfig(),
+        retry_policy: RetryPolicy = DEFAULT_RETRY,
         **kwargs: Any,
     ) -> None:
         self._model_provider = ModelProvider(model_id, model_provider_type=model_provider_type, config=config)
         self._tracer = tracer
+        self._retry_policy = retry_policy
 
         self._agent = Agent(
             model_provider=self._model_provider,
             prompt_builder=prompt_builder,
             toolsets=toolsets,
             tracer=tracer,
+            retry_policy=retry_policy,
+            **kwargs,
         )
         self._welcome_message = welcome_message
 
@@ -61,19 +72,52 @@ class CoreAgentic(Agentic):
         message: str | Message,
         *,
         images: str | list[str] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> CoreAgentResponse:
+        policy = retry_policy or self._retry_policy
         model_reply = self._agent.run(message, images=images)
         if not model_reply.tool_calls:
-            return CoreAgentResponse(result=model_reply, output=model_reply.content)
+            return CoreAgentResponse(result=model_reply, output=model_reply.content_text)
 
         outputs: list[str] = []
         tool_results: list[ToolRunResult] = []
+        attempt = 0
+
         for tool_call in model_reply.tool_calls:
-            run_result = self._agent.toolsets.run_tool(tool_call, tracer=self._tracer)
+            run_result = self._agent.run_tool(
+                tool_call,
+                tracer=self._tracer,
+                run_id=model_reply.run_id,
+            )
             if run_result is None:
                 continue
-            tool_results.append(run_result)
-            outputs.append(run_result.output)
+
+            while run_result.retry and policy.should_retry(attempt, _retry_as_exception(run_result)):
+                attempt += 1
+                tool_name, tool_args = run_result.tool_call
+                retry_msg = ToolMessage(
+                    f"Tool '{tool_name}' failed: {run_result.output}\n"
+                    f"Arguments: {json.dumps(tool_args, ensure_ascii=False)}\n"
+                    f"Please fix and try again."
+                )
+                model_reply = self._agent.run(retry_msg)
+                if not model_reply.tool_calls:
+                    return CoreAgentResponse(
+                        result=model_reply,
+                        output=model_reply.content_text,
+                        tool_results=tuple(tool_results),
+                    )
+                run_result = self._agent.run_tool(
+                    model_reply.tool_calls[0],
+                    tracer=self._tracer,
+                    run_id=model_reply.run_id,
+                )
+                if run_result is None:
+                    break
+
+            if run_result is not None:
+                tool_results.append(run_result)
+                outputs.append(run_result.output)
 
         return CoreAgentResponse(
             result=model_reply,

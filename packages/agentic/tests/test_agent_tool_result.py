@@ -79,4 +79,5 @@ def test_toolsets_execute_returns_validation_error() -> None:
     command = agent.toolsets.parse_tool(result.tool_calls[0])
     assert command is not None
     tool_result = agent.toolsets.execute(command)
-    assert "brak wymaganych parametrów" in tool_result.output
+    assert "missing required parameters" in tool_result.output
+    assert tool_result.retry is True

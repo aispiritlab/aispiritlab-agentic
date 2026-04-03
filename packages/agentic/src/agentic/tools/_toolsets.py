@@ -5,6 +5,8 @@ from typing import Any, Callable, Sequence
 
 import structlog
 
+from agentic.capabilities import AbstractCapability, HookContext
+from agentic.exceptions import DEFAULT_RETRY, ModelRetry, RetryPolicy, ToolValidationError
 from agentic.observability import LLMTracer, NoopLLMTracer, TraceSnapshot
 
 from ._tools import Command, JsonRepairer, Tool, ToolCall, ToolCallCommand, ToolContext
@@ -20,6 +22,7 @@ class ToolRunResult:
     tool_call: ToolCall
     output: str
     trace: TraceSnapshot | None = None
+    retry: bool = False
 
 
 class Toolset:
@@ -52,16 +55,22 @@ class Toolset:
         missing = sorted(tool.required_parameters - provided)
         unexpected = sorted(provided - tool.all_parameters)
 
+        errors: list[str] = []
+
         if missing:
-            missing_params = ", ".join(missing)
-            raise ValueError(
-                f"Błąd: brak wymaganych parametrów dla narzędzia '{function_name}': {missing_params}."
-            )
+            errors.append(f"missing required parameters: {', '.join(missing)}")
 
         if unexpected:
-            unexpected_params = ", ".join(unexpected)
-            raise ValueError(
-                f"Błąd: nieznane parametry dla narzędzia '{function_name}': {unexpected_params}."
+            errors.append(f"unexpected parameters: {', '.join(unexpected)}")
+
+        type_errors = tool.validate_types(parameters)
+        if type_errors:
+            errors.extend(type_errors)
+
+        if errors:
+            detail = "; ".join(errors)
+            raise ToolValidationError(
+                f"Tool '{function_name}' validation failed: {detail}"
             )
 
     def has_tool(self, function_name: str) -> bool:
@@ -181,6 +190,8 @@ class Toolsets(Sequence[Toolset]):
         *,
         tool_context: ToolContext | None = None,
         tracer: LLMTracer | None = None,
+        capability: AbstractCapability | None = None,
+        hook_context: HookContext | None = None,
     ) -> ToolRunResult:
         """Execute an already-parsed Command."""
         resolved_tracer = tracer or NoopLLMTracer()
@@ -194,6 +205,13 @@ class Toolsets(Sequence[Toolset]):
             function_name = self._command_to_tool[cmd_type]
             params = asdict(command)
 
+        if capability is not None and hook_context is not None:
+            try:
+                params = capability.before_tool_execute(function_name, params, hook_context)
+            except Exception as error:
+                capability.on_error(error, hook_context)
+                raise
+
         tool_call_tuple: ToolCall = (function_name, params)
         with resolved_tracer.step(
             name=f"tool.{function_name}",
@@ -205,8 +223,21 @@ class Toolsets(Sequence[Toolset]):
                 if toolset.has_tool(function_name):
                     try:
                         result = toolset.execute(function_name, params, tool_context=tool_context)
+                    except (ModelRetry, ToolValidationError) as retry_error:
+                        error_text = str(retry_error)
+                        if capability is not None and hook_context is not None:
+                            capability.on_error(retry_error, hook_context)
+                        span.update(level="WARNING", output={"retry": error_text})
+                        return ToolRunResult(
+                            tool_call=tool_call_tuple,
+                            output=f"Error: {error_text}",
+                            trace=resolved_tracer.current_trace,
+                            retry=True,
+                        )
                     except Exception as error:
                         error_text = str(error)
+                        if capability is not None and hook_context is not None:
+                            capability.on_error(error, hook_context)
                         span.update(level="ERROR", output={"error": error_text})
                         trace = resolved_tracer.current_trace
                         if self.is_tool_error(error_text):
@@ -221,6 +252,12 @@ class Toolsets(Sequence[Toolset]):
                             trace=trace,
                         )
                     output = "" if result is None else str(result)
+                    if capability is not None and hook_context is not None:
+                        try:
+                            output = capability.after_tool_execute(function_name, output, hook_context)
+                        except Exception as error:
+                            capability.on_error(error, hook_context)
+                            raise
                     span.update(output={"output": output[:500]})
                     return ToolRunResult(
                         tool_call=tool_call_tuple,
@@ -240,6 +277,8 @@ class Toolsets(Sequence[Toolset]):
         *,
         tool_context: ToolContext | None = None,
         tracer: LLMTracer | None = None,
+        capability: AbstractCapability | None = None,
+        hook_context: HookContext | None = None,
     ) -> ToolRunResult | None:
         """Backward compat: parse + execute in one step."""
         command = self.parse_tool(payload)
@@ -253,4 +292,10 @@ class Toolsets(Sequence[Toolset]):
                     output=f"Error: tool '{function_name}' does not exist.",
                 )
             return None
-        return self.execute(command, tool_context=tool_context, tracer=tracer)
+        return self.execute(
+            command,
+            tool_context=tool_context,
+            tracer=tracer,
+            capability=capability,
+            hook_context=hook_context,
+        )

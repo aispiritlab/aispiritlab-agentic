@@ -4,7 +4,8 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import re
-from typing import Any, Callable, get_type_hints
+import types
+from typing import Any, Callable, Union, get_args, get_origin, get_type_hints
 
 import orjson
 import structlog
@@ -178,6 +179,43 @@ def build_chat_tools(tool_schema: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return tools
 
 
+def _check_type(value: Any, expected: Any) -> bool:
+    """Check if *value* matches the *expected* type hint (best-effort)."""
+    if expected is inspect.Parameter.empty or expected is Any:
+        return True
+
+    origin = get_origin(expected)
+
+    # Handle Union / X | Y (including Optional)
+    if origin is Union or origin is types.UnionType:
+        return any(_check_type(value, arg) for arg in get_args(expected))
+
+    # Handle None / NoneType
+    if expected is type(None):
+        return value is None
+
+    # Handle generic containers (list[X], dict[X,Y], etc.) — only check outer type
+    if origin is not None:
+        if origin is list:
+            return isinstance(value, list)
+        if origin is dict:
+            return isinstance(value, dict)
+        if origin is tuple:
+            return isinstance(value, tuple)
+        if origin is set:
+            return isinstance(value, set)
+        return isinstance(value, origin)
+
+    # Plain type
+    if isinstance(expected, type):
+        # Allow int where float is expected
+        if expected is float and isinstance(value, int):
+            return True
+        return isinstance(value, expected)
+
+    return True
+
+
 class Tool:
     def __init__(self, func: Callable, *, command: type[Command] | None = None):
         self._func = func
@@ -185,6 +223,7 @@ class Tool:
         self._doc = (inspect.getdoc(func) or "").strip()
         self._args = self._extract_args(func)
         self._command_class = command
+        self._type_hints = get_type_hints(func)
         signature = inspect.signature(func)
         self._accepts_tool_context = "tool_context" in signature.parameters
 
@@ -304,6 +343,24 @@ class Tool:
         if not inspect.iscoroutinefunction(self._func):
             return await asyncio.to_thread(self._func, **call_parameters)
         return await self._func(**call_parameters)
+
+    def validate_types(self, parameters: dict[str, Any]) -> list[str]:
+        """Validate parameter types against function type hints.
+
+        Returns a list of error messages for each type mismatch.
+        """
+        errors: list[str] = []
+        for name, value in parameters.items():
+            if name == "tool_context":
+                continue
+            expected = self._type_hints.get(name)
+            if expected is None:
+                continue
+            if not _check_type(value, expected):
+                errors.append(
+                    f"parameter '{name}' expected {expected}, got {type(value).__name__}: {value!r}"
+                )
+        return errors
 
     @property
     def required_parameters(self) -> set[str]:

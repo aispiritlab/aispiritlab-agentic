@@ -304,6 +304,11 @@ class _StubAgentResult:
         self.trace = None
         self.attempt_no = None
         self.loop_iteration = None
+        self.request_usage = type("_Usage", (), {
+            "prompt_tokens": 0, "completion_tokens": 0,
+            "total_tokens": 0, "latency_ms": 0.0,
+            "model": "", "finish_reason": "",
+        })()
 
 
 class _StubResponse:

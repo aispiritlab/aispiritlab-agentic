@@ -6,6 +6,7 @@ from typing import Any, Callable, Protocol, Sequence
 
 from agentic.core_agent import CoreAgentic
 from agentic.message import ToolMessage
+from agentic.usage import UNLIMITED, RunUsage, UsageLimits
 
 from agentic.workflow.messages import AssistantMessage, ConversationData, Message, RecordedMessageMetadata
 
@@ -86,24 +87,42 @@ class MultiTurnLLMReactor:
         *,
         max_turns: int = 10,
         post_process: Callable[[str], str] | None = None,
+        usage_limits: UsageLimits | None = None,
     ) -> None:
         self._agent = agent
         self._max_turns = max_turns
         self._post_process = post_process
+        self._usage_limits = usage_limits or UNLIMITED
+        self._run_usage = RunUsage()
 
     def can_handle(self, command: Message) -> bool:
         return isinstance(command.data, ConversationData) and command.data.text is not None and len(command.data.text) > 0
 
+    @property
+    def run_usage(self) -> RunUsage:
+        return self._run_usage
+
     def invoke(self, command: Message) -> Message:
         text = command.data.text if isinstance(command.data, ConversationData) and command.data.text else ""
+        self._run_usage = RunUsage()
+        self._usage_limits.check_before_request(self._run_usage)
         response = self._agent.respond(text)
+        self._run_usage.add(response.result.request_usage)
+        if response.result.tool_calls:
+            self._run_usage.add_tool_calls(len(response.result.tool_calls))
+        self._usage_limits.check_after_request(self._run_usage)
         response.result.loop_iteration = 0
 
         turn = 0
         while response.tool_results and turn < self._max_turns:
             turn += 1
+            self._usage_limits.check_before_request(self._run_usage)
             tool_msg = ToolMessage(self._format_tool_results(response))
             response = self._agent.respond(tool_msg)
+            self._run_usage.add(response.result.request_usage)
+            if response.result.tool_calls:
+                self._run_usage.add_tool_calls(len(response.result.tool_calls))
+            self._usage_limits.check_after_request(self._run_usage)
             response.result.loop_iteration = turn
 
         output = response.output

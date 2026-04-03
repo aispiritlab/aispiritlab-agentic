@@ -9,8 +9,10 @@ from ._tools import (
     build_chat_tools,
     build_hf_json_repairer,
     json_schema_type,
+    tool,
 )
 from ._toolsets import ToolRunResult, Toolset, Toolsets
+from .composition import FilteredToolset, PrefixedToolset, WrapperToolset
 
 __all__ = [
     "Command",
@@ -26,4 +28,8 @@ __all__ = [
     "build_chat_tools",
     "build_hf_json_repairer",
     "json_schema_type",
+    "tool",
+    "FilteredToolset",
+    "PrefixedToolset",
+    "WrapperToolset",
 ]

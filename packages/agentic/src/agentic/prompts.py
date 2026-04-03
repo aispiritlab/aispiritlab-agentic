@@ -132,7 +132,7 @@ class GemmaPromptBuilder(CorePromptBuilder, PromptBuilder):
             if toolsets
             else ""
         )
-        system_template = self.system_prompt or system_prompt
+        system_template = system_prompt or self.system_prompt
         system_text = system_template.replace("{tools}", toolset_prompt).strip()
         if self._is_full_turn(system_text):
             system_turn = system_text.strip()
@@ -183,7 +183,7 @@ class QwenPromptBuilder(CorePromptBuilder, PromptBuilder):
             if toolsets
             else ""
         )
-        system_template = self.system_prompt or system_prompt
+        system_template = system_prompt or self.system_prompt
         system_text = system_template.replace("{tools}", toolset_prompt).strip()
 
         if self._is_full_turn(system_text):
@@ -221,7 +221,7 @@ class ChatPromptBuilder(CorePromptBuilder, PromptBuilder):
             if toolsets
             else ""
         )
-        system_template = self.system_prompt or system_prompt
+        system_template = system_prompt or self.system_prompt
         system_text = system_template.replace("{tools}", toolset_prompt).strip()
 
         messages: list[dict[str, str]] = []
