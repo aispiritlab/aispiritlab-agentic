@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from providers.orchestrator import ModelProvider
+
 from agentic.observability import NoopLLMTracer
+from providers.orchestrator import ModelProvider
 from registry.prompts import (
     DECISION_PROMPT,
     GREETING_PROMPT,
@@ -16,7 +17,6 @@ from registry.prompts import (
     SAGE_PROMPT,
     Prompts,
 )
-
 
 _PROMPT_CONSTANTS: dict[str, str] = {
     Prompts.GREETING: GREETING_PROMPT,
@@ -226,8 +226,8 @@ def prompt_loader():
     import registry.prompts as registry_prompts_module
 
     originals = (
-        getattr(registry_prompts_module, "get_prompt"),
-        getattr(prompts_module, "get_prompt"),
+        registry_prompts_module.get_prompt,
+        prompts_module.get_prompt,
     )
 
     registry_prompts_module.get_prompt = _registry_prompt_loader
@@ -253,11 +253,11 @@ def agent_e2e_live_model_ready(agent_e2e_live_enabled):
 
 @pytest.fixture()
 def live_runtime(tmp_path, monkeypatch):
-    import personal_assistant.output_handlers as output_handlers_module
+    from personal_assistant.agents.manage_notes import tools as note_tools
     import personal_assistant.agents.personalize.tools as personalize_tools
     import personal_assistant.agents.router.router_agent as router_agent_module
+    import personal_assistant.output_handlers as output_handlers_module
     import personal_assistant.runtime as runtime_module
-    from personal_assistant.agents.manage_notes import tools as note_tools
     from personal_assistant.runtime import PARuntime
     from personal_assistant.settings import settings
 
@@ -293,7 +293,7 @@ def live_runtime(tmp_path, monkeypatch):
 
     monkeypatch.setattr(personalize_tools, "HOME", temp_home)
     monkeypatch.setattr(personalize_tools, "OBSIDIAN_CLI_BIN", str(cli_path))
-    monkeypatch.setattr(personalize_tools, "load_vault_markdown_dataset", lambda: [])
+    monkeypatch.setattr(personalize_tools, "load_vault_markdown_dataset", list)
     monkeypatch.setattr(personalize_tools, "initial_rag", lambda _documents: None)
     monkeypatch.setattr(
         personalize_tools.git_tracer,
@@ -308,7 +308,7 @@ def live_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "message_stream_inline_bytes", 65536)
     monkeypatch.setattr(settings, "message_stream_chunk_bytes", 65536)
 
-    runtime = AgenticRuntime()
+    runtime = PARuntime()
     harness = LiveRuntimeHarness(
         runtime=runtime,
         vault_name=vault_name,

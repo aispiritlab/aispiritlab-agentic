@@ -4,7 +4,15 @@ from agentic_runtime.distributed.discovery import AgenticServiceDiscovery
 from agentic_runtime.distributed.registry import AgentSnapshot, RedisServiceRegistry
 from agentic_runtime.distributed.runtime import DistributedAgenticRuntime
 from agentic_runtime.distributed.serialization import register_record_types
-from agentic_runtime.distributed.transport import ConsumedRecord, RedisStreamsTransport
+from agentic_runtime.distributed.service import (
+    DeliveryMetrics,
+    PermanentMessageError,
+)
+from agentic_runtime.distributed.transport import (
+    ConsumedRecord,
+    MalformedRecord,
+    RedisStreamsTransport,
+)
 
 __all__ = [
     "AgentHeartbeat",
@@ -12,8 +20,11 @@ __all__ = [
     "AgentSnapshot",
     "AgenticServiceDiscovery",
     "ConsumedRecord",
+    "DeliveryMetrics",
     "DistributedAgenticRuntime",
     "DistributedChatClient",
+    "MalformedRecord",
+    "PermanentMessageError",
     "RedisServiceRegistry",
     "RedisStreamsTransport",
     "register_record_types",

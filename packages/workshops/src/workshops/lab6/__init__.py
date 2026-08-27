@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from agentic_runtime.distributed import DistributedAgenticRuntime
 from agentic_runtime.settings import settings
-
 from workshops.tui import LabApp
 
 from . import messages as _messages  # noqa: F401
@@ -11,7 +12,7 @@ from . import messages as _messages  # noqa: F401
 class Lab6App(LabApp):
     lab_title = "Lab 6 — Distributed Planner/Search/Summary"
     lab_subtitle = "Redis Streams showcase"
-    lab_info = [
+    lab_info: ClassVar[list[str]] = [
         "Topology:",
         "  chat -> planner -> search -> summary",
         "",

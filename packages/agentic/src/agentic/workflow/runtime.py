@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 import uuid
 
 from agentic.metadata import Description
 from agentic.observability import LLMTracer, NoopLLMTracer
-
 from agentic.workflow._workflow import AgenticWorkflow
 from agentic.workflow.message_bus import InMemoryMessageBus
-from agentic.workflow.messages import ConversationData, Message, RecordedMessageMetadata, UserCommand, UserMessage
+from agentic.workflow.messages import (
+    ConversationData,
+    Message,
+    RecordedMessageMetadata,
+    UserCommand,
+    UserMessage,
+)
 from agentic.workflow.output_handler import WorkflowOutputHandler
 from agentic.workflow.turn_execution import TurnExecutor, TurnPlan, coerce_reply_text
-
 
 type WorkflowHandler = Callable[[Message], Any]
 
@@ -120,9 +125,7 @@ class WorkflowRuntime:
                 trace_name=trace_name or workflow_name,
                 lifecycle_domain=lifecycle_domain or workflow_name,
                 lifecycle_target=(
-                    lifecycle_target
-                    if lifecycle_target is not None
-                    else message.metadata.target
+                    lifecycle_target if lifecycle_target is not None else message.metadata.target
                 ),
                 lifecycle_workflow_name=workflow_name,
                 output_agent_name=output_agent_name or workflow_name,

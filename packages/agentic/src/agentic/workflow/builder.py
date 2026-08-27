@@ -1,24 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
 
 from agentic.metadata import Description
-
 from agentic.workflow._workflow import AgenticWorkflow
 from agentic.workflow.consumer import ConsumerConfig
 from agentic.workflow.execution import WorkflowExecution
 from agentic.workflow.messages import Message, UserCommand, UserMessage
 from agentic.workflow.reactor import (
-    MessageRouter,
     LLMReactor,
     LLMResponse,
+    MessageRouter,
     MultiTurnLLMReactor,
     TechnicalRoutingFn,
 )
 from agentic.workflow.routing import make_llm_routing
 from agentic.workflow.runner import run_workflow
-
 
 type InputMapper = Callable[[Message], UserMessage | None]
 type ResponseEventEmitter = Callable[[LLMResponse], Sequence[Message]]
@@ -88,10 +86,21 @@ class WorkflowBuilder:
         self._description: Description | None = None
 
     def agent(self, agent: object) -> WorkflowBuilder:
+        """Attach the agent and adopt its lifecycle methods as default hooks.
+
+        ``start``/``reset``/``close`` are wired here so a ``UserCommand`` of the
+        matching type reaches the agent. Explicit ``on_start``/``on_reset``/
+        ``on_close`` calls later in the chain still override these.
+        """
         self._agent = agent
-        close = getattr(agent, "close", None)
-        if callable(close):
-            self._on_close = close
+        for method_name, attribute in (
+            ("start", "_on_start"),
+            ("reset", "_on_reset"),
+            ("close", "_on_close"),
+        ):
+            hook = getattr(agent, method_name, None)
+            if callable(hook):
+                setattr(self, attribute, hook)
         return self
 
     def inputs(self, *message_types: str | type[Message]) -> WorkflowBuilder:

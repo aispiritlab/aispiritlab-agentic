@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from agentic.workflow import SQLiteEventStore
+from agentic.workflow import SQLiteEventStore, SQLiteProcessorLock
 from agentic_runtime.distributed.client import DistributedChatClient
 from agentic_runtime.distributed.registry import AgentSnapshot, RedisServiceRegistry
 from agentic_runtime.distributed.transport import RedisStreamsTransport
@@ -37,6 +37,7 @@ class AgenticServiceDiscovery:
         transport = RedisStreamsTransport(
             settings.redis_url,
             prefix=settings.redis_stream_prefix,
+            stream_maxlen=settings.redis_stream_maxlen,
         )
         registry = RedisServiceRegistry(transport)
         return cls(
@@ -56,9 +57,7 @@ class AgenticServiceDiscovery:
             max_age_seconds=self._liveness_ttl_seconds,
         )
         if agent is None:
-            raise RuntimeError(
-                f"No live agent with capability '{capability}' is registered."
-            )
+            raise RuntimeError(f"No live agent with capability '{capability}' is registered.")
         return agent
 
     def find_optional(self, capability: str) -> AgentSnapshot | None:
@@ -85,12 +84,16 @@ class AgenticServiceDiscovery:
         role: str = "worker",
         heartbeat_seconds: float = 5.0,
         close_hook: CloseHook | None = None,
-        min_idle_ms: int = 5_000,
+        min_idle_ms: int | None = None,
     ) -> DistributedService:
         """Create a ``DistributedService`` wired to this discovery instance."""
         from agentic_runtime.distributed.service import DistributedService
         from agentic_runtime.settings import settings
 
+        if settings.distributed_require_event_store and not settings.event_store_path:
+            raise RuntimeError(
+                "EVENT_STORE_PATH is required when DISTRIBUTED_REQUIRE_EVENT_STORE=true"
+            )
         event_store = SQLiteEventStore(settings.event_store_path) if settings.event_store_path else None
         return DistributedService(
             agent_name=name,
@@ -100,8 +103,16 @@ class AgenticServiceDiscovery:
             role=role,
             heartbeat_seconds=heartbeat_seconds,
             close_hook=close_hook,
-            min_idle_ms=min_idle_ms,
+            min_idle_ms=(
+                settings.distributed_retry_min_idle_ms
+                if min_idle_ms is None
+                else min_idle_ms
+            ),
             event_store=event_store,
+            workflow_lock=(
+                SQLiteProcessorLock(event_store.path) if event_store is not None else None
+            ),
+            max_delivery_attempts=settings.distributed_max_delivery_attempts,
         )
 
     def create_client(

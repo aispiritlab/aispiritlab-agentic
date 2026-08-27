@@ -3,9 +3,10 @@
 Worker agents use a simple passthrough decider: UserMessage passes to LLM,
 everything else terminates the stream.
 """
+
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from agentic.workflow.messages import Message, UserMessage
 

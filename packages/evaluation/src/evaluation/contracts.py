@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+import json
 from typing import Any, Protocol
 
 
@@ -26,7 +26,7 @@ class Flows:
         self._flows = tuple(flows)
 
     @classmethod
-    def from_iterable(cls, flows: Iterable[Flow]) -> "Flows":
+    def from_iterable(cls, flows: Iterable[Flow]) -> Flows:
         return cls(*tuple(flows))
 
     @property
@@ -118,23 +118,17 @@ class EvaluationDefinition:
     prompt_loader: PromptLoader | None = None
     agent_callback_factory: AgentCallbackFactory | None = None
     conversation_simulator_factory: ToolResultSimulatorFactory | None = None
-    assistant_greeting: str = (
-        "Cześć! Mogę pomóc wywołać odpowiednie narzędzie. Co chcesz zrobić?"
-    )
+    assistant_greeting: str = "Cześć! Mogę pomóc wywołać odpowiednie narzędzie. Co chcesz zrobić?"
     scenarios_example: str | None = None
 
     def resolve_prompt_text(self) -> str:
         if self.prompt_text is not None:
             return self.prompt_text
         if self.prompt_loader is None:
-            raise ValueError(
-                f"Evaluation definition '{self.name}' does not provide prompt text."
-            )
+            raise ValueError(f"Evaluation definition '{self.name}' does not provide prompt text.")
         prompt_text = self.prompt_loader()
         if not isinstance(prompt_text, str) or not prompt_text.strip():
-            raise ValueError(
-                f"Evaluation definition '{self.name}' returned an empty prompt."
-            )
+            raise ValueError(f"Evaluation definition '{self.name}' returned an empty prompt.")
         return prompt_text
 
     def create_agent_callback(

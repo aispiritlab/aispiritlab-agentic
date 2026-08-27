@@ -22,7 +22,9 @@ validate_assistant_content = flow_php_repo_dataset.validate_assistant_content
 validate_agent_rows = flow_php_repo_dataset.validate_agent_rows
 
 
-def test_build_scenario_seed_files_reads_curated_files_and_synthetic_claude(tmp_path: Path) -> None:
+def test_build_scenario_seed_files_reads_curated_files_and_synthetic_claude(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "flow"
     required_files = list(CURATED_FLOW_FILES)
 
@@ -93,7 +95,7 @@ def test_build_deepfabric_config_uses_mode_specific_tools_and_model_slot(tmp_pat
     assert 'model: "google/gemini-2.5-flash"' in read_only_config
     assert "`read_file` requires a concrete `file_path` argument" in read_only_config
     assert "The final assistant turn must contain the completed answer" in read_only_config
-    assert 'package_area=<one of: core, adapter, bridge, lib, cli, repo_root>' in read_only_config
+    assert "package_area=<one of: core, adapter, bridge, lib, cli, repo_root>" in read_only_config
     assert "MAINTAINER_TASKS.md" in read_only_config
     assert "web/landing/tests/Flow/Website/Tests/Integration/ExamplesTest.php" in read_only_config
     assert "src/adapter/etl-adapter-doctrine/README.md" in read_only_config
@@ -101,7 +103,10 @@ def test_build_deepfabric_config_uses_mode_specific_tools_and_model_slot(tmp_pat
     assert "src/core/etl/src/Flow/ETL/Function/Cast.php" in read_only_config
     assert "src/lib/types/src/Flow/Types/Type/Logical/TimeZoneType.php" in read_only_config
     assert "Describe the Proposal" in read_only_config
-    assert "The synthetic `MAINTAINER_TASKS.md` in the VFS is an authoritative style reference" in read_only_config
+    assert (
+        "The synthetic `MAINTAINER_TASKS.md` in the VFS is an authoritative style reference"
+        in read_only_config
+    )
     assert "some tasks should be written like maintainer-authored proposals" in read_only_config
     assert "- read_file" in read_only_config
     assert "- write_file" not in read_only_config
@@ -149,7 +154,9 @@ def test_build_settings_for_profile_uses_profile_defaults_and_explicit_overrides
     assert xl_settings.batch_size == 8
 
 
-def test_build_settings_for_profile_legacy_question_overrides_apply_to_topics_and_generation() -> None:
+def test_build_settings_for_profile_legacy_question_overrides_apply_to_topics_and_generation() -> (
+    None
+):
     settings = build_settings_for_profile(
         "baseline",
         question_provider="openai",
@@ -185,18 +192,15 @@ def test_normalize_row_strips_header_and_preserves_successful_agent_trace() -> N
             {"role": "tool", "content": "read_file: opened requested file"},
             {
                 "role": "assistant",
-                "content": (
-                    "```php\n"
-                    "<?php\n\n"
-                    "declare(strict_types=1);\n"
-                    "```\n"
-                ),
+                "content": ("```php\n<?php\n\ndeclare(strict_types=1);\n```\n"),
             },
         ],
         "tools": [{"name": "read_file"}],
     }
 
-    normalized_row = normalize_row(raw_row, approval_mode="approved_edit", repo_root=Path("/tmp/flow"))
+    normalized_row = normalize_row(
+        raw_row, approval_mode="approved_edit", repo_root=Path("/tmp/flow")
+    )
 
     assert normalized_row is not None
     assert normalized_row.chat_row["metadata"] == {
@@ -249,7 +253,10 @@ def test_normalize_row_preserves_tool_calls_tool_call_ids_and_reasoning() -> Non
                     {
                         "id": "call_1",
                         "type": "function",
-                        "function": {"name": "read_file", "arguments": "{\"file_path\":\"README.md\"}"},
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"file_path":"README.md"}',
+                        },
                     }
                 ],
             },
@@ -265,7 +272,10 @@ def test_normalize_row_preserves_tool_calls_tool_call_ids_and_reasoning() -> Non
                     {
                         "id": "call_2",
                         "type": "function",
-                        "function": {"name": "read_file", "arguments": "{\"file_path\":\"README.md\"}"},
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"file_path":"README.md"}',
+                        },
                     }
                 ],
             },
@@ -325,13 +335,15 @@ def test_normalize_row_handles_inline_dataset_header() -> None:
                     "Set up mutation testing for the CSV adapter tests."
                 ),
             },
-            {"role": "tool", "content": "[\"composer.json\"]"},
+            {"role": "tool", "content": '["composer.json"]'},
             {"role": "assistant", "content": "Review the current mutation setup first."},
         ],
         "tools": [{"name": "list_files"}],
     }
 
-    normalized_row = normalize_row(raw_row, approval_mode="approved_edit", repo_root=Path("/tmp/flow"))
+    normalized_row = normalize_row(
+        raw_row, approval_mode="approved_edit", repo_root=Path("/tmp/flow")
+    )
 
     assert normalized_row is not None
     assert normalized_row.chat_row["metadata"]["scenario_type"] == "approved_edit"
@@ -346,7 +358,7 @@ def test_normalize_row_drops_truncated_dataset_header_without_task_text() -> Non
         "messages": [
             {"role": "system", "content": "system prompt"},
             {"role": "user", "content": "[FLOW_DATASET]"},
-            {"role": "tool", "content": "[\"README.md\"]"},
+            {"role": "tool", "content": '["README.md"]'},
             {"role": "assistant", "content": "tool_calls"},
         ]
     }
@@ -359,7 +371,10 @@ def test_normalize_row_drops_invalid_arguments_tool_error() -> None:
         "messages": [
             {"role": "system", "content": "system prompt"},
             {"role": "user", "content": "Inspect phpunit config."},
-            {"role": "tool", "content": "Error (InvalidArguments): Missing required argument: file_path"},
+            {
+                "role": "tool",
+                "content": "Error (InvalidArguments): Missing required argument: file_path",
+            },
             {"role": "assistant", "content": "I need to retry with the correct arguments."},
         ]
     }
@@ -372,8 +387,11 @@ def test_normalize_row_drops_planning_only_final_answer() -> None:
         "messages": [
             {"role": "system", "content": "system prompt"},
             {"role": "user", "content": "Review the package boundaries."},
-            {"role": "tool", "content": "[\"composer.json\"]"},
-            {"role": "assistant", "content": "I need to read the composer.json files from both packages."},
+            {"role": "tool", "content": '["composer.json"]'},
+            {
+                "role": "assistant",
+                "content": "I need to read the composer.json files from both packages.",
+            },
         ],
         "tools": [{"name": "list_files"}],
     }
@@ -452,7 +470,10 @@ def test_validate_agent_rows_allows_reasoning_and_tool_errors() -> None:
                     {
                         "id": "call_1",
                         "type": "function",
-                        "function": {"name": "read_file", "arguments": "{\"file_path\":\"README.md\"}"},
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"file_path":"README.md"}',
+                        },
                     }
                 ],
             },
@@ -461,7 +482,10 @@ def test_validate_agent_rows_allows_reasoning_and_tool_errors() -> None:
                 "content": "Error (InvalidArguments): Missing required argument: file_path",
                 "tool_call_id": "call_1",
             },
-            {"role": "assistant", "content": "The invalid tool call should be corrected on the next step."},
+            {
+                "role": "assistant",
+                "content": "The invalid tool call should be corrected on the next step.",
+            },
         ],
         "tools": [{"name": "read_file"}],
         "metadata": {

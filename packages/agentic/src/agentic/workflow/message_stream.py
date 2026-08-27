@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import Callable, Protocol, Sequence, TypeVar
+from collections.abc import Callable, Sequence
+from typing import Protocol, TypeVar
 
 from agentic.workflow.messages import Message
 
@@ -43,6 +44,6 @@ class InMemoryMessageStream:
         return list(self._history)
 
 
-def project(stream: MessageStream, projection: Callable[[Sequence[Message]], T]) -> T:
+def project[T](stream: MessageStream, projection: Callable[[Sequence[Message]], T]) -> T:
     """Kontekst = projekcja streama. Buduje read model z historii wiadomosci."""
     return projection(stream.all_messages())

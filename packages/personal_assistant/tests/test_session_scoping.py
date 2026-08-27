@@ -24,7 +24,7 @@ class _StubRuntime:
     def run_chat(self, text: str) -> str:
         return text
 
-    def run_generate_image(self, text: str, images=None):  # noqa: ANN001, ANN201
+    def run_generate_image(self, text: str, images=None):
         del images
         return text
 

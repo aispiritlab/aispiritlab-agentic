@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 
-from personal_assistant.agents.manage_notes.evaluation import NOTES_EVALUATION, NOTES_TOOL_SCENARIOS
 from evaluation import build_conversation_examples, build_conversation_scenarios
+from personal_assistant.agents.manage_notes.evaluation import (
+    NOTES_EVALUATION,
+    NOTES_TOOL_SCENARIOS,
+)
 
 
 def test_notes_tool_scenarios_have_unique_names_and_user_messages() -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gradio as gr
 
-
 SPIRIT_THEME = gr.themes.Base(
     primary_hue=gr.themes.colors.emerald,
     secondary_hue=gr.themes.colors.cyan,

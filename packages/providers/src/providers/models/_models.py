@@ -7,7 +7,7 @@ from typing import Any
 
 from structlog import get_logger
 
-from .config import ModelConfig
+from .config import DEFAULT_MODEL_CONFIG, ModelConfig
 from .response import ModelResponse
 
 logger = get_logger(__name__)
@@ -17,7 +17,7 @@ class Model:
     def __init__(
         self,
         provider: tuple[object, object],
-        config: ModelConfig = ModelConfig(),
+        config: ModelConfig = DEFAULT_MODEL_CONFIG,
         *,
         inference_lock: Lock | None = None,
     ):
@@ -63,7 +63,7 @@ class VLModel:
     def __init__(
         self,
         provider: tuple[object, object],
-        config: ModelConfig = ModelConfig(),
+        config: ModelConfig = DEFAULT_MODEL_CONFIG,
         *,
         inference_lock: Lock | None = None,
     ):
@@ -112,7 +112,7 @@ class VoiceModel:
     def __init__(
         self,
         provider: object,
-        config: ModelConfig = ModelConfig(),
+        config: ModelConfig = DEFAULT_MODEL_CONFIG,
         *,
         inference_lock: Lock | None = None,
     ):

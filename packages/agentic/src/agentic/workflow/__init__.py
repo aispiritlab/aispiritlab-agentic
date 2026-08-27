@@ -1,5 +1,10 @@
 from agentic.workflow._workflow import AgenticWorkflow
-from agentic.workflow.builder import ConfiguredWorkflow, WorkflowBuilder, define_workflow, passthrough_decider
+from agentic.workflow.builder import (
+    ConfiguredWorkflow,
+    WorkflowBuilder,
+    define_workflow,
+    passthrough_decider,
+)
 from agentic.workflow.bus import (
     CommandBus,
     EventBus,
@@ -7,15 +12,23 @@ from agentic.workflow.bus import (
     InMemoryEventBus,
 )
 from agentic.workflow.consumer import ConsumerConfig, MessageConsumer
+from agentic.workflow.conversation import (
+    assistant_message,
+    message_text,
+    reply_metadata,
+    user_message,
+)
 from agentic.workflow.decider import (
     CommandHandlerResult,
     Decider,
     DeciderSpecification,
     handle_command,
 )
+from agentic.workflow.durable import DurableWorkflowExecutor, DurableWorkflowResult
 from agentic.workflow.errors import (
     AgenticError,
     ConcurrencyConflictError,
+    DuplicateMessageError,
     IllegalStateError,
     NotFoundError,
     StepLimitExceeded,
@@ -30,17 +43,11 @@ from agentic.workflow.event_store import (
     EventStore,
     InlineProjection,
     InMemoryEventStore,
+    ReadAllResult,
     ReadStreamResult,
 )
-from agentic.workflow.processor import (
-    CheckpointStore,
-    InMemoryCheckpointStore,
-    MessageProcessor,
-    ProcessorConfig,
-    StartFrom,
-)
 from agentic.workflow.execution import ExecutionTurnRecord, WorkflowExecution
-from agentic.workflow.message_bus import InMemoryMessageBus, MessageStore
+from agentic.workflow.message_bus import DurableMessageBus, InMemoryMessageBus, MessageStore
 from agentic.workflow.message_stream import InMemoryMessageStream, MessageStream, project
 from agentic.workflow.messages import (
     AssistantMessage,
@@ -49,9 +56,9 @@ from agentic.workflow.messages import (
     ConversationData,
     Event,
     Message,
-    MessageMetadata,
     MessageChunk,
     MessageCompleted,
+    MessageMetadata,
     MessageStarted,
     PromptSnapshot,
     RecordedMessageMetadata,
@@ -61,6 +68,7 @@ from agentic.workflow.messages import (
     TurnStarted,
     UserCommand,
     UserMessage,
+    normalize_recorded_message,
 )
 from agentic.workflow.output_handler import (
     OutputHandlerDispatcher,
@@ -68,7 +76,17 @@ from agentic.workflow.output_handler import (
     dispatch_output_handlers,
     workflow_output_handler,
 )
-from agentic.workflow.runtime import WorkflowRuntime
+from agentic.workflow.processor import (
+    CheckpointStore,
+    CompareAndSwapCheckpointStore,
+    InMemoryCheckpointStore,
+    InMemoryProcessorLock,
+    MessageProcessor,
+    ProcessorConfig,
+    ProcessorLock,
+    ProcessorStats,
+    StartFrom,
+)
 from agentic.workflow.reactor import (
     LLMReactor,
     LLMResponse,
@@ -77,8 +95,12 @@ from agentic.workflow.reactor import (
     Reactor,
     TechnicalRoutingFn,
 )
-from agentic.workflow.sqlite_event_store import SQLiteCheckpointStore, SQLiteEventStore
+from agentic.workflow.routing import make_llm_routing
+from agentic.workflow.runner import run_workflow
+from agentic.workflow.runtime import WorkflowRuntime
 from agentic.workflow.saga import (
+    DurableSagaCoordinator,
+    DurableSagaResult,
     Saga,
     SagaAction,
     SagaResult,
@@ -86,7 +108,27 @@ from agentic.workflow.saga import (
     replay_saga,
     run_saga_step,
 )
-from agentic.workflow.routing import make_llm_routing
+from agentic.workflow.serialization import (
+    add_registration_hook,
+    deserialize_record,
+    register_payload_upcaster,
+    register_record_contract,
+    register_record_types,
+    serialize_record,
+)
+from agentic.workflow.sqlite_event_store import (
+    EventPayloadCodec,
+    SQLiteCheckpointStore,
+    SQLiteEventStore,
+    SQLiteProcessorLock,
+    SQLiteTransactionalProjection,
+)
+from agentic.workflow.turn_execution import (
+    TurnExecutor,
+    TurnPlan,
+    coerce_execution,
+    coerce_reply_text,
+)
 from agentic.workflow.types import (
     EventId,
     GlobalPosition,
@@ -96,10 +138,11 @@ from agentic.workflow.types import (
     StreamName,
     TurnId,
 )
-from agentic.workflow.runner import run_workflow
-from agentic.workflow.turn_execution import TurnExecutor, TurnPlan, coerce_execution, coerce_reply_text
 
 __all__ = [
+    "NO_CONCURRENCY_CHECK",
+    "STREAM_DOES_NOT_EXIST",
+    "STREAM_EXISTS",
     "AgenticError",
     "AgenticWorkflow",
     "AggregateStreamResult",
@@ -109,6 +152,7 @@ __all__ = [
     "Command",
     "CommandBus",
     "CommandHandlerResult",
+    "CompareAndSwapCheckpointStore",
     "ConcurrencyConflictError",
     "ConfiguredWorkflow",
     "ConsumerConfig",
@@ -116,52 +160,62 @@ __all__ = [
     "ConversationData",
     "Decider",
     "DeciderSpecification",
+    "DuplicateMessageError",
+    "DurableMessageBus",
+    "DurableSagaCoordinator",
+    "DurableSagaResult",
+    "DurableWorkflowExecutor",
+    "DurableWorkflowResult",
     "Event",
     "EventBus",
     "EventId",
+    "EventPayloadCodec",
     "EventStore",
     "ExecutionTurnRecord",
     "GlobalPosition",
     "IllegalStateError",
-    "InlineProjection",
     "InMemoryCheckpointStore",
     "InMemoryCommandBus",
     "InMemoryEventBus",
     "InMemoryEventStore",
     "InMemoryMessageBus",
     "InMemoryMessageStream",
+    "InMemoryProcessorLock",
+    "InlineProjection",
     "LLMReactor",
     "LLMResponse",
     "Message",
-    "MessageMetadata",
     "MessageChunk",
     "MessageCompleted",
     "MessageConsumer",
     "MessageId",
+    "MessageMetadata",
     "MessageProcessor",
     "MessageRouter",
     "MessageStarted",
     "MessageStore",
     "MessageStream",
     "MultiTurnLLMReactor",
-    "NO_CONCURRENCY_CHECK",
     "NotFoundError",
     "OutputHandlerDispatcher",
     "ProcessorConfig",
+    "ProcessorLock",
+    "ProcessorStats",
     "PromptSnapshot",
-    "RecordedMessageMetadata",
-    "ReadStreamResult",
     "Reactor",
+    "ReadAllResult",
+    "ReadStreamResult",
+    "RecordedMessageMetadata",
     "RuntimeId",
+    "SQLiteCheckpointStore",
+    "SQLiteEventStore",
+    "SQLiteProcessorLock",
+    "SQLiteTransactionalProjection",
     "Saga",
     "SagaAction",
     "SagaResult",
     "SagaStep",
     "SessionId",
-    "SQLiteCheckpointStore",
-    "SQLiteEventStore",
-    "STREAM_DOES_NOT_EXIST",
-    "STREAM_EXISTS",
     "StartFrom",
     "StepLimitExceeded",
     "StreamName",
@@ -180,16 +234,27 @@ __all__ = [
     "WorkflowExecution",
     "WorkflowOutputHandler",
     "WorkflowRuntime",
+    "add_registration_hook",
+    "assistant_message",
     "coerce_execution",
     "coerce_reply_text",
     "define_workflow",
+    "deserialize_record",
     "dispatch_output_handlers",
     "handle_command",
     "make_llm_routing",
+    "message_text",
+    "normalize_recorded_message",
     "passthrough_decider",
     "project",
+    "register_payload_upcaster",
+    "register_record_contract",
+    "register_record_types",
     "replay_saga",
+    "reply_metadata",
     "run_saga_step",
     "run_workflow",
+    "serialize_record",
+    "user_message",
     "workflow_output_handler",
 ]

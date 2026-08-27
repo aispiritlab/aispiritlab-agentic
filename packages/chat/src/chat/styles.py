@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 WORKSPACE_TABS_CSS = """
 .workspace-tabs {
     display: flex;
@@ -165,11 +164,4 @@ HEADER_CSS = """
 }
 """
 
-GLOBAL_CSS = "\n".join([
-    WORKSPACE_TABS_CSS,
-    BUTTON_CSS,
-    ANIMATION_CSS,
-    CARD_CSS,
-    CONTEXT_BAR_CSS,
-    HEADER_CSS,
-])
+GLOBAL_CSS = f"{WORKSPACE_TABS_CSS}\n{BUTTON_CSS}\n{ANIMATION_CSS}\n{CARD_CSS}\n{CONTEXT_BAR_CSS}\n{HEADER_CSS}"

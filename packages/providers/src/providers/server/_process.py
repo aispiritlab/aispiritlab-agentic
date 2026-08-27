@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import signal
 import sys
+from typing import TextIO
 
 from structlog import get_logger
 
@@ -39,6 +40,11 @@ def build_command(binary_path: Path, config: ServerConfig, port: int) -> list[st
     return cmd
 
 
+def _open_log_file(log_file: Path) -> TextIO:
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    return log_file.open("w", encoding="utf-8")
+
+
 async def start_process(
     binary_path: Path,
     config: ServerConfig,
@@ -50,8 +56,8 @@ async def start_process(
 
     opened_file = None
     if log_file:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        opened_file = open(log_file, "w")
+        # Filesystem calls block the event loop, so they run on a worker thread.
+        opened_file = await asyncio.to_thread(_open_log_file, log_file)
         stdout_file = opened_file
         stderr_file = stdout_file
     else:
@@ -84,7 +90,7 @@ async def stop_process(process: asyncio.subprocess.Process, timeout: float = 10.
     try:
         await asyncio.wait_for(process.wait(), timeout=timeout)
         logger.info("server_stopped_gracefully", pid=process.pid)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("server_force_killing", pid=process.pid)
         process.kill()
         await process.wait()

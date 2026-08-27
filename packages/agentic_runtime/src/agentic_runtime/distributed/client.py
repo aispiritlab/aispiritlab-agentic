@@ -67,15 +67,9 @@ class DistributedChatClient:
             for record in records:
                 next_id = record.entry_id
                 message = record.record
-                if (
-                    not isinstance(message, Message)
-                    or message.metadata.turn_id != turn_id
-                ):
+                if not isinstance(message, Message) or message.metadata.turn_id != turn_id:
                     continue
-                if (
-                    isinstance(message, AssistantMessage)
-                    and message.metadata.scope == "canonical"
-                ):
+                if isinstance(message, AssistantMessage) and message.metadata.scope == "canonical":
                     return message.data.text or ""
                 if isinstance(message, TurnCompleted) and message.metadata.status == "error":
                     payload = message.data if isinstance(message.data, dict) else {}
@@ -84,9 +78,7 @@ class DistributedChatClient:
                         raise RuntimeError(error_message)
                     raise RuntimeError("Distributed turn failed.")
 
-        raise TimeoutError(
-            f"Timed out waiting for distributed response from {self._entry_agent}."
-        )
+        raise TimeoutError(f"Timed out waiting for distributed response from {self._entry_agent}.")
 
     def close(self) -> None:
         self._transport.close()

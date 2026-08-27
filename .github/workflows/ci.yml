@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  quality:
+    name: Lint, types and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Verify the lockfile matches pyproject.toml
+        run: uv lock --check
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Check formatting
+        run: uv run ruff format --check
+
+      - name: Lint
+        run: uv run ruff check
+
+      # Reported, not enforced: the codebase still has a backlog of ~345 `ty`
+      # diagnostics, mostly imprecise annotations on duck-typed agent plumbing.
+      # Flip continue-on-error off once that backlog is worked down.
+      - name: Type check
+        continue-on-error: true
+        run: uv run ty check
+
+      - name: Run tests
+        run: uv run pytest -q
+
+  containers:
+    name: Validate compose files
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate MLflow stack
+        run: >
+          docker compose --project-directory . --env-file .env.example
+          -f containers/docker-compose.yml config --quiet
+
+      - name: Validate Lab 6 stack
+        run: >
+          docker compose --project-directory . --env-file .env.example
+          -f containers/docker-compose.lab6.yml config --quiet

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
+import json
 
 from evaluation.contracts import EvaluationDefinition, ToolScenario, render_tool_call
 from evaluation.eval_dataset import build_goldens_from_scenarios
@@ -70,8 +70,8 @@ def run_prompt_optimization(
     scenarios_json: str,
     openrouter_model: str,
     openrouter_api_key: str,
-    num_candidates: float | int,
-    num_trials: float | int,
+    num_candidates: float,
+    num_trials: float,
     runtime_options: Mapping[str, str] | None = None,
 ) -> tuple[str, str]:
     resolved_prompt = prompt_to_optimize.strip()
@@ -99,8 +99,7 @@ def run_prompt_optimization(
         return f"Błąd optymalizacji: {error}", ""
 
     return (
-        "Optymalizacja zakończona. "
-        f"Scenariusze: {len(scenarios)}, model: {resolved_model}.",
+        f"Optymalizacja zakończona. Scenariusze: {len(scenarios)}, model: {resolved_model}.",
         optimized_prompt,
     )
 
@@ -132,9 +131,7 @@ def _extract_prefill_messages(item: dict[str, object], *, index: int) -> list[st
     messages: list[str] = []
     for message in raw_prefill:
         if not isinstance(message, str):
-            raise ValueError(
-                f"Scenario #{index}: `prefill_messages` can contain only strings."
-            )
+            raise ValueError(f"Scenario #{index}: `prefill_messages` can contain only strings.")
         if message.strip():
             messages.append(message.strip())
     return messages
@@ -147,18 +144,14 @@ def _build_expected_output(item: dict[str, object], *, index: int) -> str | None
             tool_name = expected_output.get("name") or expected_output.get("tool_name")
             parameters = expected_output.get("parameters", {})
             if not isinstance(tool_name, str) or not tool_name.strip():
-                raise ValueError(
-                    f"Scenario #{index}: `expected_output.name` must be a string."
-                )
+                raise ValueError(f"Scenario #{index}: `expected_output.name` must be a string.")
             if not isinstance(parameters, dict):
                 raise ValueError(
                     f"Scenario #{index}: `expected_output.parameters` must be an object."
                 )
             return render_tool_call(tool_name.strip(), parameters)
         if not isinstance(expected_output, str) or not expected_output.strip():
-            raise ValueError(
-                f"Scenario #{index}: `expected_output` must be a non-empty string."
-            )
+            raise ValueError(f"Scenario #{index}: `expected_output` must be a non-empty string.")
         return expected_output.strip()
 
     tool_name = item.get("tool_name")
@@ -172,7 +165,7 @@ def _build_expected_output(item: dict[str, object], *, index: int) -> str | None
     return render_tool_call(tool_name.strip(), parameters)
 
 
-def _to_positive_int(value: float | int, field_name: str) -> int:
+def _to_positive_int(value: float, field_name: str) -> int:
     try:
         resolved = int(value)
     except (TypeError, ValueError) as error:

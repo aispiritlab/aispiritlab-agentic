@@ -3,9 +3,7 @@ from __future__ import annotations
 import pytest
 
 from agentic_runtime.distributed.discovery import AgenticServiceDiscovery
-from agentic_runtime.distributed.registry import AgentSnapshot, RedisServiceRegistry
-from agentic_runtime.distributed.service import DistributedService
-from agentic_runtime.distributed.transport import RedisStreamsTransport
+from agentic_runtime.distributed.registry import AgentSnapshot
 
 
 class _FakeRegistry:

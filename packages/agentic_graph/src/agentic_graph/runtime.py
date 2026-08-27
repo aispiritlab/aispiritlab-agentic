@@ -90,7 +90,11 @@ def _format_event_detail(message: object) -> str:
             lines.extend(["", "**Text:**", f"```\n{data.text}\n```"])
         elif isinstance(data, dict) and data:
             lines.extend(
-                ["", "**Data:**", f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"]
+                [
+                    "",
+                    "**Data:**",
+                    f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```",
+                ]
             )
 
     return "\n".join(lines)

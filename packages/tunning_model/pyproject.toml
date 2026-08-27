@@ -11,8 +11,8 @@ dependencies = [
     "structlog>=25.5.0",
 ]
 
-[project.scripts]
-tunning-model = "tunning_model:main"
+# No [project.scripts]: this package ships Colab notebooks and training assets,
+# not a runnable CLI. Add an entry point here once tunning_model exposes main().
 
 [build-system]
 requires = ["uv_build>=0.10.5,<0.11.0"]

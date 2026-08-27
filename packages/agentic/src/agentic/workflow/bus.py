@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 import logging
-from typing import Callable, Protocol, Sequence
+from typing import Protocol
 
-from agentic.workflow.messages import Event, Message, UserCommand
+from agentic.workflow.messages import Event, UserCommand
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,7 @@ class InMemoryCommandBus:
 
     def register(self, command_type: str, handler: CommandHandler) -> None:
         if command_type in self._handlers:
-            raise ValueError(
-                f"Command type '{command_type}' already has a registered handler"
-            )
+            raise ValueError(f"Command type '{command_type}' already has a registered handler")
         self._handlers[command_type] = handler
 
     def send(self, command: UserCommand) -> None:
@@ -76,9 +75,7 @@ class InMemoryEventBus:
             try:
                 handler(event)
             except Exception:
-                logger.exception(
-                    "Event handler failed for event type '%s'", event.type
-                )
+                logger.exception("Event handler failed for event type '%s'", event.type)
 
     def publish_many(self, events: Sequence[Event]) -> None:
         for event in events:

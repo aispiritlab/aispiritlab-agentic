@@ -83,9 +83,7 @@ class TransformersProvider(ProviderProto):
         *,
         inference_lock: Lock | None = None,
     ) -> TransformersModel:
-        return TransformersModel(
-            backend, model_name, config=config, inference_lock=inference_lock
-        )
+        return TransformersModel(backend, model_name, config=config, inference_lock=inference_lock)
 
     @classmethod
     def close_backend(cls, backend: tuple[object, object]) -> None:

@@ -4,6 +4,7 @@ Use these types in function signatures to prevent accidentally mixing up
 identifiers that are all plain strings at runtime. The type checker will
 catch e.g. passing a TurnId where a SessionId is expected.
 """
+
 from __future__ import annotations
 
 from typing import NewType

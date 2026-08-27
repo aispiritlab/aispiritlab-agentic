@@ -36,8 +36,7 @@ class HttpClient:
             return response.json()
         except httpx.ConnectError as exc:
             raise ModelConnectionError(
-                f"Could not connect to model API at {self.base_url}. "
-                "Is the server running?"
+                f"Could not connect to model API at {self.base_url}. Is the server running?"
             ) from exc
 
     def post(self, path: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -47,8 +46,7 @@ class HttpClient:
             return response.json()
         except httpx.ConnectError as exc:
             raise ModelConnectionError(
-                f"Could not connect to model API at {self.base_url}. "
-                "Is the server running?"
+                f"Could not connect to model API at {self.base_url}. Is the server running?"
             ) from exc
 
     def close(self) -> None:

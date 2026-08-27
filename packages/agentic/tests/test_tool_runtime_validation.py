@@ -30,7 +30,9 @@ def test_run_tool_returns_error_message_for_invalid_parameters() -> None:
 def test_run_tool_accepts_raw_payload_and_returns_tool_definition() -> None:
     toolsets = Toolsets([Toolset([add_note])])
 
-    result = toolsets.run_tool('{"name":"add_note","parameters":{"note_name":"Pizza","note":"Pepperoni"}}')
+    result = toolsets.run_tool(
+        '{"name":"add_note","parameters":{"note_name":"Pizza","note":"Pepperoni"}}'
+    )
     assert result is not None
 
     assert result.tool_call == ("add_note", {"note_name": "Pizza", "note": "Pepperoni"})

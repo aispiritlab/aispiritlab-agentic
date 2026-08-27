@@ -25,8 +25,7 @@ def _verify_digest(file_path: Path, expected_digest: str) -> bool:
     if not expected_digest:
         return True
     digest_value = expected_digest
-    if digest_value.startswith("sha256:"):
-        digest_value = digest_value[len("sha256:") :]
+    digest_value = digest_value.removeprefix("sha256:")
     sha256 = hashlib.sha256()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -36,7 +35,7 @@ def _verify_digest(file_path: Path, expected_digest: str) -> bool:
 
 def _extract_archive(archive_path: Path, dest_dir: Path) -> None:
     name = archive_path.name
-    if name.endswith(".tar.gz") or name.endswith(".tgz"):
+    if name.endswith((".tar.gz", ".tgz")):
         with tarfile.open(archive_path, "r:gz") as tf:
             tf.extractall(dest_dir, filter="data")
     elif name.endswith(".zip"):
@@ -63,12 +62,13 @@ def download_asset(asset: ReleaseAsset, dest_dir: Path) -> Path:
         logger.info("asset_already_downloaded", asset=asset.name)
     else:
         logger.info("downloading_asset", url=asset.download_url, size=asset.size)
-        with httpx.Client(timeout=300.0, follow_redirects=True) as client:
-            with client.stream("GET", asset.download_url) as response:
-                response.raise_for_status()
-                with open(archive_path, "wb") as f:
-                    for chunk in response.iter_bytes(chunk_size=65536):
-                        f.write(chunk)
+        with (
+            httpx.Client(timeout=300.0, follow_redirects=True) as client,
+            client.stream("GET", asset.download_url) as response,
+            archive_path.open("wb") as archive,
+        ):
+            response.raise_for_status()
+            archive.writelines(response.iter_bytes(chunk_size=65536))
 
         if asset.digest and not _verify_digest(archive_path, asset.digest):
             archive_path.unlink()

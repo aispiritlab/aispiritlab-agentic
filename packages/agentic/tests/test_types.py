@@ -29,7 +29,7 @@ class TestNominalTypes:
         assert stream_name == "cart-alice"
 
     def test_position_types(self) -> None:
-        from agentic.workflow.types import StreamPosition, GlobalPosition
+        from agentic.workflow.types import StreamPosition
 
         sp = StreamPosition(42)
         gp = GlobalPosition(100)

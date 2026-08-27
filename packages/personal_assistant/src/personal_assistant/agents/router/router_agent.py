@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from agentic.core_agent import CoreAgentResponse, CoreAgentic
-from providers.models import ModelConfig
-from agentic.prompts import QwenPromptBuilder, PromptTemplate
-from personal_assistant.settings import settings
+from agentic.core_agent import CoreAgentic, CoreAgentResponse
+from agentic.prompts import PromptTemplate, QwenPromptBuilder
 from agentic_runtime.trace import create_tracer  # framework utility
+from personal_assistant.settings import settings
+from providers.models import ModelConfig
 from registry import Prompts
 
 
@@ -19,7 +19,7 @@ class RouterAgent(CoreAgentic):
             model_id=settings.orchestration_model_name,
             prompt_builder=QwenPromptBuilder(external_prompt_name=Prompts.DECISION),
             tracer=create_tracer(enabled=True),
-            config=ModelConfig(max_tokens=20,generation_mode="orchestration"),
+            config=ModelConfig(max_tokens=20, generation_mode="orchestration"),
             welcome_message=self._WELCOME_MESSAGE,
         )
 
@@ -28,6 +28,16 @@ class RouterAgent(CoreAgentic):
         return response.output.replace("<think>", "").replace("</think>", "").strip()
 
     def route_response(
+        self,
+        message: str,
+        available_workflows_summary: str,
+    ) -> CoreAgentResponse:
+        # Held across clear + respond: otherwise a concurrent turn can wipe the
+        # history this call just prepared, or read the other turn's messages.
+        with self.turn_lock:
+            return self._route_response_locked(message, available_workflows_summary)
+
+    def _route_response_locked(
         self,
         message: str,
         available_workflows_summary: str,

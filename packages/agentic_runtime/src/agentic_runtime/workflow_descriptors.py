@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import inspect
 import textwrap
-from typing import Callable
 
 from agentic.workflow._workflow import AgenticWorkflow
 
@@ -35,7 +35,7 @@ def render_workflow_descriptor(descriptor: WorkflowDescriptor) -> str:
             raise TypeError("workflow has no handle")
         handler_source = inspect.getsource(descriptor.handler)
         rendered_source = textwrap.dedent(handler_source).strip()
-    except (OSError, TypeError):
+    except OSError, TypeError:
         rendered_source = (
             f"def handle(message):\n"
             f"    # source unavailable\n"
@@ -50,4 +50,6 @@ def render_workflow_descriptor(descriptor: WorkflowDescriptor) -> str:
 
 
 def render_workflow_descriptors(workflows: list[AgenticWorkflow]) -> str:
-    return "\n\n".join(render_workflow_descriptor(build_workflow_descriptor(workflow)) for workflow in workflows)
+    return "\n\n".join(
+        render_workflow_descriptor(build_workflow_descriptor(workflow)) for workflow in workflows
+    )

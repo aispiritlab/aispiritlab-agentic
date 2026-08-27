@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from agentic.core_agent import CoreAgentic
-from providers.models import ModelConfig
 from agentic.prompts import QwenPromptBuilder
 from agentic.workflow import (
     LLMReactor,
-    UserMessage,
     dispatch_output_handlers,
     make_llm_routing,
     run_workflow,
+    user_message,
     workflow_output_handler,
 )
-
+from providers.models import ModelConfig
 from workshops.tui import LabApp
 
 from .deciders import critic_decider, writer_decider
@@ -24,7 +25,7 @@ MODEL_ID = "Qwen/Qwen3.5-2B"
 class Lab1App(LabApp):
     lab_title = "Lab 1 — Writer & Critic Workflow"
     lab_subtitle = "Event-driven two-agent flow"
-    lab_info = [
+    lab_info: ClassVar[list[str]] = [
         f"Model: {MODEL_ID} (local, MLX)",
         "",
         "Flow:",
@@ -50,11 +51,10 @@ class Lab1App(LabApp):
             self.write_activity("Event", "WriterCompleted → Critic", style="#ff9e64")
             self.set_status("Critic reviewing...")
             execution = run_workflow(
-                message=UserMessage(
-                    text=f"Review this text and give brief feedback:\n{message.writer_output}",
-                    runtime_id=message.runtime_id,
-                    turn_id=message.turn_id,
+                message=user_message(
+                    f"Review this text and give brief feedback:\n{message.writer_output}",
                     source="writer",
+                    reply_to=message,
                 ),
                 decider=critic_decider,
                 routing_fn=self._critic_routing,
@@ -72,7 +72,7 @@ class Lab1App(LabApp):
         self.write_activity("Writer", "Generating text...", style="#9ece6a")
 
         writer_result = run_workflow(
-            message=UserMessage(text=message, source="user"),
+            message=user_message(message, source="user"),
             decider=writer_decider,
             routing_fn=self._writer_routing,
         )

@@ -146,11 +146,7 @@ def build_runner_tab(preview_events_state: gr.State | None = None) -> None:
         message: str,
         turn_count: int,
         history: list[list[str]],
-    ) -> Generator[
-        tuple[str, str, int, list[list[str]], object, list[dict[str, object]], str],
-        None,
-        None,
-    ]:
+    ) -> Generator[tuple[str, str, int, list[list[str]], object, list[dict[str, object]], str]]:
         final_output, steps, event_records, status = _run_preset(graph_json, message)
         new_turn = turn_count + 1
 

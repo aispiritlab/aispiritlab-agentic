@@ -4,13 +4,18 @@ from collections.abc import Callable
 from enum import StrEnum
 import json
 from threading import current_thread, main_thread
+from typing import ClassVar
 
 from rich import box
 from rich.markdown import Markdown as RichMarkdown
 from rich.panel import Panel
 from rich.text import Text
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, Vertical
+from textual.widgets import Button, Footer, Header, RichLog, Static, TextArea
 
-from providers.image.mflux import ImageGenerationResult
+from agentic.workflow.messages import Message
 from personal_assistant import (
     ai_spirit_agent,
     chat_agent,
@@ -19,11 +24,7 @@ from personal_assistant import (
     get_initial_greeting,
     get_runtime,
 )
-from agentic.workflow.messages import Message
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Button, Footer, Header, RichLog, Static, TextArea
+from providers.image.mflux import ImageGenerationResult
 
 
 class ChatMode(StrEnum):
@@ -240,7 +241,7 @@ class ChatTerminalApp(App[None]):
 
     TITLE = "AI Spirit Agent"
     SUB_TITLE = "Textual + Rich terminal chat"
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("ctrl+enter", "send", "Send"),
         Binding("ctrl+l", "clear_chat", "New Chat"),
         Binding("1", "mode_agents", "Agents"),

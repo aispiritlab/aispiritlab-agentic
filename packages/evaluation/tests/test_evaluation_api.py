@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from deepeval.dataset import Golden
 from deepeval.prompt import Prompt
+import pytest
 
 import evaluation
 from evaluation import (
@@ -12,13 +12,13 @@ from evaluation import (
     ToolScenario,
     build_conversation_dataset_records,
     build_conversation_scenarios,
-    build_trace_dataset_records,
     build_goldens_from_flows,
+    build_trace_dataset_records,
     load_evaluation_definition,
+    mlflow_bridge,
     normalize_definition_spec,
     optimize_prompt_text,
 )
-import evaluation.mlflow_bridge as mlflow_bridge
 from evaluation import notes_prompt_optimization_miprov2 as optimization_module
 
 
@@ -91,9 +91,10 @@ def test_load_evaluation_definition_resolves_notes_definition() -> None:
 
 
 def test_normalize_definition_spec_maps_legacy_alias() -> None:
-    assert normalize_definition_spec(
-        "agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION"
-    ) == "personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION"
+    assert (
+        normalize_definition_spec("agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION")
+        == "personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION"
+    )
 
 
 def test_build_trace_dataset_records_includes_trace_metadata(monkeypatch) -> None:

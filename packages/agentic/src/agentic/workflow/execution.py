@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from agentic.agent import AgentResult
 from agentic.tools import ToolRunResult
-
 from agentic.workflow.messages import Message
 
 

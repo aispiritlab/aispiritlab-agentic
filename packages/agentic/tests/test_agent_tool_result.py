@@ -1,9 +1,9 @@
 from contextlib import contextmanager
 
 from agentic.agent import Agent
-from providers.models.response import ModelResponse
 from agentic.prompts import GemmaPromptBuilder
 from agentic.tools import ToolCallCommand, Toolset, Toolsets
+from providers.models.response import ModelResponse
 
 
 def add_note(note_name: str, note: str) -> str:

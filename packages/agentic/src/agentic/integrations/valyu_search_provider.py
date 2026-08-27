@@ -87,14 +87,8 @@ class ValyuSearchProvider:
                 SearchResult(
                     title=str(item.get("title", "")).strip(),
                     url=str(item.get("url", "")).strip(),
-                    snippet=str(
-                        item.get("content")
-                        or item.get("description")
-                        or ""
-                    ).strip(),
-                    published_at=(
-                        str(published).strip() if published is not None else None
-                    ),
+                    snippet=str(item.get("content") or item.get("description") or "").strip(),
+                    published_at=(str(published).strip() if published is not None else None),
                 )
             )
         logger.info(

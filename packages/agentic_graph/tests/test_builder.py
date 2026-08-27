@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import tomllib
 
+import orjson
+import pytest
+
 from agentic.workflow.messages import RecordedMessageMetadata
 from agentic_graph import AgenticGraphBuilder
 from agentic_graph.compiler import compile_graph
@@ -14,8 +17,6 @@ from agentic_graph.serialization import graph_from_json, graph_to_json
 from agentic_graph.tab import _sanitize_graph_and_secrets
 from agentic_runtime.distributed.serialization import deserialize_record, serialize_record
 from agentic_runtime.storage.projections import GenericProjection
-import orjson
-import pytest
 
 
 def _node(
@@ -171,7 +172,9 @@ def test_builder_warns_for_unwired_searcher_and_provider() -> None:
     assert not [issue for issue in issues if issue.level == "error"]
     messages = [issue.message for issue in issues if issue.level == "warning"]
     assert any("Searcher 'Searcher' is not wired yet" in message for message in messages)
-    assert any("Agent 'Searcher' has no connected provider block" in message for message in messages)
+    assert any(
+        "Agent 'Searcher' has no connected provider block" in message for message in messages
+    )
 
 
 def test_generate_python_code_uses_workflow_runtime_and_graph_events(tmp_path: Path) -> None:
@@ -237,7 +240,9 @@ def test_graph_completion_event_projection_preserves_text_and_payload() -> None:
     }
 
 
-def test_generate_python_code_requires_env_var_for_connected_search_integrations(tmp_path: Path) -> None:
+def test_generate_python_code_requires_env_var_for_connected_search_integrations(
+    tmp_path: Path,
+) -> None:
     graph = AgentGraph(
         graph_id="graph-env-var",
         name="Env Var Workflow",
@@ -304,11 +309,18 @@ class _StubAgentResult:
         self.trace = None
         self.attempt_no = None
         self.loop_iteration = None
-        self.request_usage = type("_Usage", (), {
-            "prompt_tokens": 0, "completion_tokens": 0,
-            "total_tokens": 0, "latency_ms": 0.0,
-            "model": "", "finish_reason": "",
-        })()
+        self.request_usage = type(
+            "_Usage",
+            (),
+            {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "latency_ms": 0.0,
+                "model": "",
+                "finish_reason": "",
+            },
+        )()
 
 
 class _StubResponse:
@@ -319,7 +331,9 @@ class _StubResponse:
 
 
 class _StubLLMCall:
-    def __init__(self, model_name: str, *, model_provider_type: str = "openai", **_: object) -> None:
+    def __init__(
+        self, model_name: str, *, model_provider_type: str = "openai", **_: object
+    ) -> None:
         self.model_name = model_name
         self.model_provider_type = model_provider_type
 

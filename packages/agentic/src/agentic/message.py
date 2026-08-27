@@ -1,9 +1,35 @@
+"""Conversation turns and how they render into a prompt.
+
+The turn markers below are Gemma-style. Gemma has no separate ``system`` role —
+the system prompt is rendered as a ``model`` turn — which is why both
+:class:`SystemMessage` and :class:`AssistantMessage` carry ``role = "model"``.
+Builders for other families (see ``agentic.prompts.QwenPromptBuilder``) detect
+and pass through their own markers.
+"""
+
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
+
+__all__ = [
+    "AssistantMessage",
+    "Message",
+    "SystemMessage",
+    "ToolMessage",
+    "UserMessage",
+]
+
+TURN_START = "<start_of_turn>"
+TURN_END = "<end_of_turn>"
+TOOL_RESULT_START = "<tool_call_response>"
+TOOL_RESULT_END = "</tool_call_response>"
 
 
 class Message:
+    """A single conversation turn."""
+
+    role: ClassVar[str] = ""
+
     def __init__(
         self,
         content: str | None = None,
@@ -21,38 +47,43 @@ class Message:
                 return content
         return ""
 
+    def as_turn(self) -> str:
+        """Render this message as a prompt turn."""
+        return f"{TURN_START}{self.role}\n{self.get_text()}\n{TURN_END}"
+
     def __str__(self) -> str:
         return self.get_text()
 
     def __repr__(self) -> str:
-        return self.get_text()
+        return f"{type(self).__name__}(role={self.role!r}, content={self.get_text()!r})"
+
+
+class AssistantMessage(Message):
+    """A reply produced by the model."""
+
+    role: ClassVar[str] = "model"
 
 
 class SystemMessage(Message):
-    role = "model"
+    """Instructions given to the model.
 
-    def __init__(self, content: str | None = None):
-        super().__init__(content)
+    Rendered as a ``model`` turn because the Gemma chat template has no
+    dedicated system role.
+    """
 
-    def as_turn(self) -> str:
-        return f"<start_of_turn>{self.role}\n{self.content}\n<end_of_turn>"
+    role: ClassVar[str] = "model"
 
 
 class ToolMessage(Message):
-    role = "tool"
+    """The result of a tool call, fed back to the model."""
 
-    def __init__(self, content: str | None = None):
-        super().__init__(content)
+    role: ClassVar[str] = "tool"
 
     def as_turn(self) -> str:
-        return f"<tool_call_response>{self.content}\n</tool_call_response>"
+        return f"{TOOL_RESULT_START}{self.get_text()}\n{TOOL_RESULT_END}"
 
 
 class UserMessage(Message):
-    role = "user"
+    """A turn written by the user."""
 
-    def __init__(self, content: str | None = None):
-        super().__init__(content)
-
-    def as_turn(self) -> str:
-        return f"<start_of_turn>{self.role}\n{self.content}\n<end_of_turn>"
+    role: ClassVar[str] = "user"

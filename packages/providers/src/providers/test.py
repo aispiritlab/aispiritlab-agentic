@@ -20,10 +20,10 @@ Or with ``Agent``::
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
 from providers.models.response import ModelResponse
 

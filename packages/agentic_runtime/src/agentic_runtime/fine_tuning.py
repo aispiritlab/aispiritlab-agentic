@@ -59,7 +59,7 @@ def _tool_error_like_clauses() -> str:
 
 def _successful_turns(connection: sqlite3.Connection, runtime_id: str | None) -> list[sqlite3.Row]:
     error_filter = _tool_error_like_clauses()
-    query = f"""
+    query = """
         SELECT turn_id, runtime_id, session_id, domain, trace_id, created_at_ns
         FROM message_stream
         WHERE kind = 'turn_completed'
@@ -100,13 +100,11 @@ def _turn_domain(turn_rows: list[sqlite3.Row], default_domain: str) -> str:
     )
 
 
-def _turn_rows_for_domain(turn_rows: list[sqlite3.Row], domain: str) -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
-    system_rows = [
-        row for row in turn_rows if row["role"] == "system" and row["domain"] == domain
-    ]
-    body_rows = [
-        row for row in turn_rows if row["role"] != "system" and row["domain"] == domain
-    ]
+def _turn_rows_for_domain(
+    turn_rows: list[sqlite3.Row], domain: str
+) -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
+    system_rows = [row for row in turn_rows if row["role"] == "system" and row["domain"] == domain]
+    body_rows = [row for row in turn_rows if row["role"] != "system" and row["domain"] == domain]
     return system_rows, body_rows
 
 
@@ -125,9 +123,7 @@ def export_agent_fine_tuning_rows(
             FROM conversation_records
             {where_clause}
             ORDER BY created_at_ns, COALESCE(sequence_no, 0), message_id
-            """.format(
-                where_clause="WHERE runtime_id = ?" if runtime_id is not None else ""
-            ),
+            """.format(where_clause="WHERE runtime_id = ?" if runtime_id is not None else ""),
             [runtime_id] if runtime_id is not None else [],
         ).fetchall()
 
@@ -174,19 +170,12 @@ def export_agent_fine_tuning_rows(
                     "prompt_name": prompt_row["prompt_name"] if prompt_row is not None else None,
                     "prompt_hash": prompt_row["prompt_hash"] if prompt_row is not None else None,
                     "trace_id": next(
-                        (
-                            row["trace_id"]
-                            for row in body_rows
-                            if row["trace_id"]
-                        ),
-                        turn["trace_id"] if "trace_id" in turn.keys() else None,
+                        (row["trace_id"] for row in body_rows if row["trace_id"]),
+                        # sqlite3.Row has no .get(); membership is checked via keys().
+                        turn["trace_id"] if "trace_id" in turn.keys() else None,  # noqa: SIM118
                     ),
                     "agent_run_id": next(
-                        (
-                            row["agent_run_id"]
-                            for row in body_rows
-                            if row["agent_run_id"]
-                        ),
+                        (row["agent_run_id"] for row in body_rows if row["agent_run_id"]),
                         None,
                     ),
                     "final_message_id": next(
@@ -198,17 +187,11 @@ def export_agent_fine_tuning_rows(
                         None,
                     ),
                     "retry_count": max(
-                        (
-                            max(int(row["attempt_no"] or 0) - 1, 0)
-                            for row in body_rows
-                        ),
+                        (max(int(row["attempt_no"] or 0) - 1, 0) for row in body_rows),
                         default=0,
                     ),
                     "loop_iteration_count": max(
-                        (
-                            int(row["loop_iteration"] or 0)
-                            for row in body_rows
-                        ),
+                        (int(row["loop_iteration"] or 0) for row in body_rows),
                         default=0,
                     ),
                 },
@@ -235,9 +218,7 @@ def export_router_fine_tuning_rows(
               AND name = 'workflow_selected'
               {runtime_clause}
             ORDER BY created_at_ns
-            """.format(
-                runtime_clause="AND runtime_id = ?" if runtime_id is not None else ""
-            ),
+            """.format(runtime_clause="AND runtime_id = ?" if runtime_id is not None else ""),
             [runtime_id] if runtime_id is not None else [],
         ).fetchall()
         conversation_rows = connection.execute(
@@ -246,9 +227,7 @@ def export_router_fine_tuning_rows(
             FROM conversation_records
             {where_clause}
             ORDER BY created_at_ns, COALESCE(sequence_no, 0), message_id
-            """.format(
-                where_clause="WHERE runtime_id = ?" if runtime_id is not None else ""
-            ),
+            """.format(where_clause="WHERE runtime_id = ?" if runtime_id is not None else ""),
             [runtime_id] if runtime_id is not None else [],
         ).fetchall()
 
@@ -272,7 +251,10 @@ def export_router_fine_tuning_rows(
         exported.append(
             {
                 "messages": [
-                    {"role": "system", "content": router_prompt["text"] if router_prompt is not None else ""},
+                    {
+                        "role": "system",
+                        "content": router_prompt["text"] if router_prompt is not None else "",
+                    },
                     {"role": "user", "content": user_row["text"] or ""},
                     {"role": "assistant", "content": str(workflow or "")},
                 ],
@@ -282,9 +264,14 @@ def export_router_fine_tuning_rows(
                     "turn_id": event["turn_id"],
                     "domain": "routing",
                     "expected_workflow": workflow,
-                    "prompt_name": router_prompt["prompt_name"] if router_prompt is not None else None,
-                    "prompt_hash": router_prompt["prompt_hash"] if router_prompt is not None else None,
-                    "trace_id": event["trace_id"] if "trace_id" in event.keys() else None,
+                    "prompt_name": router_prompt["prompt_name"]
+                    if router_prompt is not None
+                    else None,
+                    "prompt_hash": router_prompt["prompt_hash"]
+                    if router_prompt is not None
+                    else None,
+                    # sqlite3.Row has no .get(); membership is checked via keys().
+                    "trace_id": event["trace_id"] if "trace_id" in event.keys() else None,  # noqa: SIM118
                 },
             }
         )

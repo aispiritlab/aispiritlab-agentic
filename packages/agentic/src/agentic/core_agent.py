@@ -1,5 +1,5 @@
-import json
 from dataclasses import dataclass
+import json
 from typing import Any, Protocol
 
 from agentic.agent import Agent, AgentResult
@@ -7,23 +7,19 @@ from agentic.exceptions import DEFAULT_RETRY, ModelRetry, RetryPolicy
 from agentic.message import Message, ToolMessage
 from agentic.observability import LLMTracer
 from agentic.prompts import PromptBuilder
+from agentic.tools import ToolRunResult, Toolsets
 from providers.models import ModelConfig
 from providers.orchestrator import ModelProvider, ModelProviderType
-from agentic.tools import ToolRunResult, Toolsets
 
 
 class Agentic(Protocol):
-    def call(self, message: str) -> str:
-        ...
+    def call(self, message: str) -> str: ...
 
-    def start(self) -> str:
-        ...
+    def start(self) -> str: ...
 
-    def reset(self) -> None:
-        ...
+    def reset(self) -> None: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +35,6 @@ def _retry_as_exception(result: ToolRunResult) -> ModelRetry:
 
 
 class CoreAgentic(Agentic):
-
     def __init__(
         self,
         model_id: str,
@@ -49,11 +44,15 @@ class CoreAgentic(Agentic):
         tracer: LLMTracer | None = None,
         *,
         model_provider_type: ModelProviderType = "mlx",
-        config: ModelConfig = ModelConfig(),
+        config: ModelConfig | None = None,
         retry_policy: RetryPolicy = DEFAULT_RETRY,
         **kwargs: Any,
     ) -> None:
-        self._model_provider = ModelProvider(model_id, model_provider_type=model_provider_type, config=config)
+        self._model_provider = ModelProvider(
+            model_id,
+            model_provider_type=model_provider_type,
+            config=config or ModelConfig(),
+        )
         self._tracer = tracer
         self._retry_policy = retry_policy
 
@@ -74,6 +73,16 @@ class CoreAgentic(Agentic):
         images: str | list[str] | None = None,
         retry_policy: RetryPolicy | None = None,
     ) -> CoreAgentResponse:
+        with self._agent.turn_lock:
+            return self._respond_locked(message, images=images, retry_policy=retry_policy)
+
+    def _respond_locked(
+        self,
+        message: str | Message,
+        *,
+        images: str | list[str] | None,
+        retry_policy: RetryPolicy | None,
+    ) -> CoreAgentResponse:
         policy = retry_policy or self._retry_policy
         model_reply = self._agent.run(message, images=images)
         if not model_reply.tool_calls:
@@ -92,7 +101,9 @@ class CoreAgentic(Agentic):
             if run_result is None:
                 continue
 
-            while run_result.retry and policy.should_retry(attempt, _retry_as_exception(run_result)):
+            while run_result.retry and policy.should_retry(
+                attempt, _retry_as_exception(run_result)
+            ):
                 attempt += 1
                 tool_name, tool_args = run_result.tool_call
                 retry_msg = ToolMessage(
@@ -143,6 +154,11 @@ class CoreAgentic(Agentic):
             raise NotImplementedError("Workflow does not define a welcome message.")
         self._agent.clear_history()
         return self._welcome_message
+
+    @property
+    def turn_lock(self):
+        """Serialises turns on the underlying agent."""
+        return self._agent.turn_lock
 
     def reset(self) -> None:
         self._agent.clear_history()

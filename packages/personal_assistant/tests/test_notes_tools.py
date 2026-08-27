@@ -48,7 +48,9 @@ def test_add_note_creates_new_note(monkeypatch, tmp_path: Path) -> None:
     assert (vault / "Zakupy.md").read_text(encoding="utf-8") == "Mleko"
 
 
-def test_add_note_appends_to_existing_note_with_newline_separator(monkeypatch, tmp_path: Path) -> None:
+def test_add_note_appends_to_existing_note_with_newline_separator(
+    monkeypatch, tmp_path: Path
+) -> None:
     vault = tmp_path / "vault"
     vault.mkdir()
     (vault / "Zakupy.md").write_text("Mleko", encoding="utf-8")
@@ -116,7 +118,7 @@ def test_discovery_toolset_includes_search() -> None:
 
 
 def test_search_uses_rag_search(monkeypatch) -> None:
-    import personal_assistant.rag as rag
+    from personal_assistant import rag
 
     monkeypatch.setattr(rag, "search", lambda query: f"wynik:{query}")
 
@@ -133,14 +135,16 @@ def test_add_note_uses_obsidian_cli_with_vault_name(monkeypatch, tmp_path: Path)
     _set_personalization_file(tmp_path, monkeypatch, vault_name="MyVault")
     calls: list[list[str]] = []
 
-    def fake_run(args, check, capture_output, text):  # noqa: ANN001
+    def fake_run(args, check, capture_output, text):
         assert check is False
         assert capture_output is True
         assert text is True
         calls.append(list(args))
         command = args[2]
         if command == "read":
-            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="not found")
+            return subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="not found"
+            )
         if command == "create":
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         raise AssertionError(f"Unexpected command: {command}")
@@ -160,7 +164,7 @@ def test_list_notes_uses_obsidian_cli_with_vault_name(monkeypatch, tmp_path: Pat
     _set_personalization_file(tmp_path, monkeypatch, vault_name="MyVault")
     calls: list[list[str]] = []
 
-    def fake_run(args, check, capture_output, text):  # noqa: ANN001
+    def fake_run(args, check, capture_output, text):
         assert check is False
         assert capture_output is True
         assert text is True

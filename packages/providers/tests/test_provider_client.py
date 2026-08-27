@@ -10,7 +10,6 @@ import pytest
 import respx
 
 from providers.client import ProviderClient
-from providers.schema.config import InferenceConfig
 from providers.schema.response import InferenceResponse
 
 
@@ -77,5 +76,6 @@ class TestProviderClientHttpx:
         client = ProviderClient("http://localhost:8080", backend="httpx")
         with pytest.raises(NotImplementedError, match="only supported with the 'openai' backend"):
             import asyncio
+
             asyncio.run(client.achat("Hello"))
         client.close()

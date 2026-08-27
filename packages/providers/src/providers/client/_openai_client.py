@@ -23,18 +23,20 @@ class OpenAIInferenceClient:
         *,
         api_key: str = "no-key",
         model: str = "default",
-        config: InferenceConfig = InferenceConfig(),
+        config: InferenceConfig | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
-        self._config = config
+        self._config = config or InferenceConfig()
         self._client = OpenAI(base_url=f"{self._base_url}/v1", api_key=api_key)
         self._async_client: AsyncOpenAI | None = None
 
     def _get_async_client(self) -> AsyncOpenAI:
         if self._async_client is None:
-            self._async_client = AsyncOpenAI(base_url=f"{self._base_url}/v1", api_key=self._api_key)
+            self._async_client = AsyncOpenAI(
+                base_url=f"{self._base_url}/v1", api_key=self._api_key
+            )
         return self._async_client
 
     def _build_messages(self, prompt: str | list[dict[str, str]]) -> list[dict[str, str]]:

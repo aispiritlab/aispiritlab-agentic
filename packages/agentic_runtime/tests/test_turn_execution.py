@@ -4,14 +4,16 @@ from typing import Any
 import pytest
 
 from agentic.agent import AgentResult
+from agentic.agent import PromptSnapshot as AgentPromptSnapshot
 from agentic.observability import NoopLLMTracer, TraceSnapshot
-
+from agentic.usage import RequestUsage
 from agentic_runtime.execution import WorkflowExecution
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
     ConversationData,
     Event,
+    PromptSnapshot,
     RecordedMessageMetadata,
     TurnCompleted,
     TurnStarted,
@@ -121,6 +123,60 @@ def test_turn_executor_preserves_trace_and_run_id_for_fallback_execution() -> No
     turn_completed = bus.messages[-1]
     assert isinstance(turn_completed, TurnCompleted)
     assert turn_completed.metadata.trace_id == "trace-turn-1"
+
+
+def test_turn_executor_persists_llm_reproducibility_metadata() -> None:
+    bus = InMemoryMessageBus()
+    executor = TurnExecutor(bus=bus, tracer=NoopLLMTracer())
+    result = AgentResult(
+        content="answer",
+        run_id="run-1",
+        prompt_snapshot=AgentPromptSnapshot(
+            text="system prompt",
+            prompt_name="assistant-v2",
+            prompt_hash="prompt-hash",
+        ),
+        request_usage=RequestUsage(
+            prompt_tokens=12,
+            completion_tokens=4,
+            total_tokens=16,
+            latency_ms=25.5,
+            model="model-1",
+            finish_reason="stop",
+        ),
+        model_provider="openai",
+        generation_config_hash="config-hash",
+    )
+
+    executor.execute(
+        TurnPlan(
+            incoming=UserMessage(
+                data=ConversationData(role="user", text="question"),
+                metadata=RecordedMessageMetadata(
+                    runtime_id="rt-1",
+                    turn_id="turn-1",
+                    domain="research",
+                    source="user",
+                ),
+            ),
+            handler=lambda _: WorkflowExecution(text="answer", agent_result=result),
+            trace_name="research",
+            lifecycle_domain="research",
+            lifecycle_target="research",
+            lifecycle_workflow_name="research",
+            output_agent_name="research",
+        )
+    )
+
+    snapshot = next(message for message in bus.messages if isinstance(message, PromptSnapshot))
+    assert snapshot.metadata.model_name == "model-1"
+    assert snapshot.metadata.model_provider == "openai"
+    assert snapshot.metadata.input_tokens == 12
+    assert snapshot.metadata.output_tokens == 4
+    assert snapshot.metadata.total_tokens == 16
+    assert snapshot.metadata.model_latency_ms == 25.5
+    assert snapshot.metadata.finish_reason == "stop"
+    assert snapshot.metadata.generation_config_hash == "config-hash"
 
 
 def test_turn_executor_reuses_existing_targeted_turn_id() -> None:

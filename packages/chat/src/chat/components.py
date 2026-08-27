@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import gradio as gr
+from structlog import get_logger
+
+logger = get_logger(__name__)
 
 type ChatMessage = dict[str, object]
 type ChatHistory = list[ChatMessage]
@@ -143,15 +146,15 @@ def append_voice_response(
         is_empty_fn: Callable(transcription) -> bool.
     """
     if voice_model is None:
-        print("Voice model is not available.")
+        logger.warning("voice_model_unavailable")
         return history, None
 
     transcription, response_error = convert_audio_fn(voice_model, audio)  # type: ignore[operator]
     if response_error is not None and is_empty_fn(transcription):  # type: ignore[operator]
-        print(response_error)
+        logger.warning("voice_transcription_error", error=str(response_error))
 
     if transcription is None:
-        print("Voice transcription failed.")
+        logger.warning("voice_transcription_failed")
         return history, None
 
     transcribed_text = str(getattr(transcription, "text", ""))

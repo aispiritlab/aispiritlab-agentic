@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import reduce
-from typing import Callable, Generic, Sequence, TypeVar
+from typing import TypeVar
 
 from agentic.workflow.errors import ConcurrencyConflictError, IllegalStateError
 from agentic.workflow.event_store import EventStore
 from agentic.workflow.messages import Event
-
 
 C = TypeVar("C")
 S = TypeVar("S")
@@ -15,7 +15,7 @@ E = TypeVar("E", bound=Event)
 
 
 @dataclass(frozen=True, slots=True)
-class Decider(Generic[C, S, E]):
+class Decider[C, S, E: Event]:
     """Core event sourcing triad: decide + evolve + initial_state.
 
     - decide(command, state) -> events: pure business logic
@@ -29,13 +29,13 @@ class Decider(Generic[C, S, E]):
 
 
 @dataclass(frozen=True, slots=True)
-class CommandHandlerResult(Generic[S, E]):
+class CommandHandlerResult[S, E: Event]:
     new_events: tuple[E, ...]
     new_state: S
     next_version: int
 
 
-def handle_command(
+def handle_command[C, S, E: Event](
     store: EventStore,
     stream_name: str,
     decider: Decider[C, S, E],
@@ -119,7 +119,9 @@ class DeciderSpecification:
 
 
 class _WhenResult:
-    def __init__(self, decider: Decider[object, object, Event], state: object, command: object) -> None:
+    def __init__(
+        self, decider: Decider[object, object, Event], state: object, command: object
+    ) -> None:
         self._decider = decider
         self._state = state
         self._command = command
@@ -138,7 +140,9 @@ class _WhenResult:
         actual = tuple(self._decider.decide(self._command, self._state))
         assert actual == (), f"Expected no events, got {len(actual)}: {actual}"
 
-    def then_throws(self, error_type: type[Exception] = IllegalStateError, *, match: str = "") -> None:
+    def then_throws(
+        self, error_type: type[Exception] = IllegalStateError, *, match: str = ""
+    ) -> None:
         import pytest
 
         with pytest.raises(error_type, match=match):

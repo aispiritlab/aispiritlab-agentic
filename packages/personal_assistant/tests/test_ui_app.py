@@ -6,7 +6,9 @@ import personal_assistant.ui.app as app_module
 def test_generate_response_passes_workspace_to_agent_call(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
-    def _fake_ai_spirit_agent(message: str, user: str | None = None, workspace: str | None = None) -> str:
+    def _fake_ai_spirit_agent(
+        message: str, user: str | None = None, workspace: str | None = None
+    ) -> str:
         captured["message"] = message
         captured["user"] = user or ""
         captured["workspace"] = workspace or ""

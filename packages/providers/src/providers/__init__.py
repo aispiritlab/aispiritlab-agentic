@@ -8,8 +8,8 @@ from providers.basic.config import HttpProviderConfig
 from providers.models.config import ModelConfig
 from providers.models.response import ModelResponse
 from providers.orchestrator import ModelProvider, ModelProviderType
-from providers.sglang import SGLangProvider
 from providers.schema import InferenceConfig, InferenceResponse
+from providers.sglang import SGLangProvider
 
 __all__ = [
     "BasicProvider",

@@ -1,17 +1,15 @@
-"""Inference response."""
+"""Inference response.
+
+``InferenceResponse`` is the client-layer name for the same payload the model
+layer calls ``ModelResponse``; it is an alias rather than a copy so values cross
+layer boundaries without conversion.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from providers.models.response import ModelResponse
 
+__all__ = ["InferenceResponse", "ModelResponse"]
 
-@dataclass(frozen=True, slots=True)
-class InferenceResponse:
-    text: str
-    model: str = ""
-    request_id: str = ""
-    finish_reason: str = ""
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    latency_ms: float = 0.0
+# A plain alias, not a `type` statement: this name is also used as a constructor.
+InferenceResponse = ModelResponse

@@ -15,9 +15,9 @@ def test_top_level_decider_is_event_sourcing_class() -> None:
 
 def test_reactor_module_does_not_export_legacy_decider_alias() -> None:
     with pytest.raises(ImportError):
-        exec("from agentic.workflow.reactor import Decider", {})
+        exec("from agentic.workflow.reactor import Decider", {})  # noqa: S102
 
 
 def test_runtime_reactor_module_does_not_export_legacy_decider_alias() -> None:
     with pytest.raises(ImportError):
-        exec("from agentic_runtime.reactor import Decider", {})
+        exec("from agentic_runtime.reactor import Decider", {})  # noqa: S102

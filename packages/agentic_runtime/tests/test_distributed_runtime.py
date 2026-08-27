@@ -92,7 +92,9 @@ class _FakeTransport:
 
 def test_distributed_chat_client_publishes_user_message_and_returns_assistant_text() -> None:
     transport = _FakeTransport()
-    client = DistributedChatClient(transport, entry_agent="planner", source="chat", timeout_seconds=1.0)
+    client = DistributedChatClient(
+        transport, entry_agent="planner", source="chat", timeout_seconds=1.0
+    )
 
     reply = client.ask("Find fresh info about Redis")
 

@@ -8,9 +8,8 @@ class RegisterPrompt(BaseModel):
     name: str
     prompt: str
     commit_message: str = "Initial commit"
-    tags: dict[str, str] = {
-        "author": "John Doe"
-    }
+    tags: dict[str, str] = {"author": "John Doe"}
+
 
 def register_prompt(prompt: RegisterPrompt):
     mlflow.set_registry_uri(settings.mlflow_registry_uri)
@@ -18,5 +17,5 @@ def register_prompt(prompt: RegisterPrompt):
         name=prompt.name,
         template=prompt.prompt,
         commit_message=prompt.commit_message,
-        tags=prompt.tags
+        tags=prompt.tags,
     )

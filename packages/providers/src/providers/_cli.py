@@ -97,7 +97,9 @@ def _cmd_start(name: str, args: argparse.Namespace) -> None:
     async def _run() -> None:
         server = InferenceServer(binary_path, config, settings)
         await server.start()
-        print(f"Server running at {server.base_url} (PID: {server._process.pid if server._process else '?'})")
+        print(
+            f"Server running at {server.base_url} (PID: {server._process.pid if server._process else '?'})"
+        )
         print("Press Ctrl+C to stop")
         try:
             while server.is_running:

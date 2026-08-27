@@ -22,17 +22,17 @@ dependencies = [
     "core",
     "dataloader",
     "registry",
-    "mlflow==3.10.1",
+    "mlflow>=3.15.1",
     "typer>=0.24.1",
     "torchaudio>=2.11.0",
     "onnx-asr>=0.11.0",
-    "deepeval>=3.9.2",
+    "deepeval>=4.2.0",
     "cachetools>=7.0.5",
     "onnxruntime>=1.24.3",
     "providers",
     "mlx>=0.31.1; sys_platform == 'darwin'",
     "mlx-lm>=0.31.1; sys_platform == 'darwin'",
-    "mlx-vlm>=0.4.1; sys_platform == 'darwin'",
+    "mlx-vlm>=0.6.16; sys_platform == 'darwin'",
     "agentic",
     "orjson>=3.11.7",
     'importlib-metadata; python_version<"3.15"',
@@ -40,11 +40,15 @@ dependencies = [
     "evaluation",
     "agentic-graph",
     "gitpython>=3.1.46",
-    "transformers==5.3.0",
+    # Was pinned to 5.3.0 by a fork of mlx-audio; upstream mlx-audio 0.5.0
+    # requires >=5.14.0, which unblocked this.
+    "transformers>=5.15.1",
     "tree-sitter>=0.25.2",
     "tree-sitter-markdown>=0.5.1",
-    "huggingface-hub>=1.7.2",
-    "mlx-audio; sys_platform == 'darwin'",
+    # Capped at 1.16.x, not by us: huggingface-hub>=1.28 wants click>=8.4.2 while
+    # deepeval pins click<8.4.0. Raise this once deepeval relaxes that ceiling.
+    "huggingface-hub>=1.16.1",
+    "mlx-audio>=0.5.0; sys_platform == 'darwin'",
     "httpx>=0.28.1",
     "tenacity>=9.1.4",
     "mflux>=0.17.0; sys_platform == 'darwin'",
@@ -65,14 +69,54 @@ dev = [
 
 [tool.ruff]
 line-length = 99
-src = ["src"]
-include = ["pyproject.toml", "src/**/*.py"]
+src = ["packages/*/src"]
+extend-exclude = ["apps", ".venv"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # Add import sorting
+ignore = [
+    # Shutdown, tracing and best-effort cleanup paths deliberately swallow
+    # everything so one failing step cannot abort the rest. They log first.
+    "BLE001",
+    "S110",
+    "S112",
+    # Malformed user input and config documents are reported as ValueError by
+    # design (callers such as workshops.lab0.tools.calculate catch it); TypeError
+    # is reserved for genuinely wrong Python types.
+    "TRY004",
+    # Exception messages are written for humans at the call site.
+    "TRY003",
+    "EM101",
+    "EM102",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI entry points print to stdout on purpose — that is their interface.
+"packages/cli/**" = ["T20"]
+"packages/dataloader/**" = ["T20"]
+"packages/workshops/**" = ["T20"]
+"packages/providers/src/providers/_cli.py" = ["T20"]
+"packages/evaluation/src/evaluation/print_full_rank_list.py" = ["T20"]
+"packages/evaluation/src/evaluation/notes_prompt_optimization_miprov2.py" = ["T20"]
+# Tests assert on internals and use fixtures that shadow names.
+"**/tests/**" = ["S101", "SLF001", "PLR2004", "ANN"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"]
+known-first-party = [
+    "agentic",
+    "agentic_graph",
+    "agentic_runtime",
+    "chat",
+    "cli",
+    "core",
+    "dataloader",
+    "evaluation",
+    "knowledge_base",
+    "personal_assistant",
+    "providers",
+    "registry",
+    "workshops",
+]
 force-sort-within-sections = true
 
 [tool.pytest.ini_options]
@@ -113,4 +157,3 @@ personal_assistant = { workspace = true }
 agentic_graph = { workspace = true }
 providers = { workspace = true }
 workshops = { workspace = true }
-mlx_audio = { git = "https://github.com/mkubasz/mlx-audio" }

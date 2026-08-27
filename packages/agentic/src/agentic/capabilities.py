@@ -23,8 +23,9 @@ Example::
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,9 +59,7 @@ class AbstractCapability:
         """Called before executing a tool. Return modified parameters."""
         return parameters
 
-    def after_tool_execute(
-        self, tool_name: str, result: str, context: HookContext
-    ) -> str:
+    def after_tool_execute(self, tool_name: str, result: str, context: HookContext) -> str:
         """Called after tool execution. Return modified result."""
         return result
 
@@ -103,9 +102,7 @@ class CombinedCapability(AbstractCapability):
             parameters = cap.before_tool_execute(tool_name, parameters, context)
         return parameters
 
-    def after_tool_execute(
-        self, tool_name: str, result: str, context: HookContext
-    ) -> str:
+    def after_tool_execute(self, tool_name: str, result: str, context: HookContext) -> str:
         for cap in reversed(self._capabilities):
             result = cap.after_tool_execute(tool_name, result, context)
         return result

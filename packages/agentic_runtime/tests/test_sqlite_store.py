@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+import sqlite3
 
 import orjson
 
+from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.messaging.messages import (
     ConversationData,
     Event,
@@ -14,7 +14,6 @@ from agentic_runtime.messaging.messages import (
     UserCommand,
     UserMessage,
 )
-from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.storage.sqlite_store import SQLiteMessageStore
 
 
@@ -156,3 +155,26 @@ def test_sqlite_message_store_persists_runtime_stream(tmp_path: Path) -> None:
         "note_name": "Projekt",
         "note_path": "/vault/Projekt.md",
     }
+
+
+def test_sqlite_message_projection_is_idempotent_by_event_id(tmp_path: Path) -> None:
+    path = tmp_path / "message_stream.sqlite3"
+    store = SQLiteMessageStore(path=path, flush_interval_seconds=0.001)
+    bus = InMemoryMessageBus(store=store)
+    message = Event(
+        type="research.requested",
+        metadata=RecordedMessageMetadata(
+            runtime_id="runtime-1",
+            turn_id="turn-1",
+            message_id="logical-1",
+            event_id="event-1",
+        ),
+    )
+
+    bus.publish(message)
+    bus.publish(message)
+    bus.close()
+
+    with sqlite3.connect(path) as connection:
+        count = connection.execute("SELECT COUNT(*) FROM message_stream").fetchone()
+    assert count == (1,)

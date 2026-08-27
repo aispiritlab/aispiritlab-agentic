@@ -6,6 +6,7 @@ import asyncio
 import atexit
 from pathlib import Path
 from types import TracebackType
+from typing import Self
 
 from structlog import get_logger
 
@@ -70,7 +71,10 @@ class InferenceServer:
 
         try:
             self._process = await start_process(
-                self._binary_path, self._config, self._port, log_file=log_file,
+                self._binary_path,
+                self._config,
+                self._port,
+                log_file=log_file,
             )
 
             if self._process.pid is not None:
@@ -122,7 +126,7 @@ class InferenceServer:
         if self._pid_path is not None:
             remove_pid_file(self._pid_path)
 
-    async def __aenter__(self) -> InferenceServer:
+    async def __aenter__(self) -> Self:
         await self.start()
         return self
 

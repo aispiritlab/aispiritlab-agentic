@@ -1,4 +1,5 @@
 """WorkshopRuntime — thin wrapper over the shared workflow runtime kernel."""
+
 from __future__ import annotations
 
 from agentic.workflow import WorkflowRuntime

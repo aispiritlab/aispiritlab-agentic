@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
-from agentic.observability import LLMTracer, TraceSnapshot, TracingContext, build_trace_snapshot
-
+from agentic.observability import LLMTracer, TraceSnapshot, TracingContext
 from agentic.workflow.execution import ExecutionTurnRecord, WorkflowExecution
 from agentic.workflow.message_bus import InMemoryMessageBus
 from agentic.workflow.messages import (
@@ -22,7 +22,6 @@ from agentic.workflow.streaming import (
     build_tool_messages,
     resolve_trace_context,
 )
-
 
 type TurnHandler = Callable[[UserMessage], Any]
 
@@ -220,6 +219,7 @@ class TurnExecutor:
                 agent_name=workflow_name,
                 snapshot=turn.agent_result.prompt_snapshot,
                 agent_run_id=turn.agent_result.run_id,
+                agent_result=turn.agent_result,
                 ctx=turn_ctx,
             )
             if snapshot_message is not None:
@@ -274,7 +274,9 @@ class TurnExecutor:
         with self._tracer.workflow(
             name=plan.trace_name,
             session_id=plan.incoming.metadata.session_id or plan.incoming.metadata.runtime_id,
-            input=plan.incoming.data.text if isinstance(plan.incoming.data, ConversationData) else None,
+            input=plan.incoming.data.text
+            if isinstance(plan.incoming.data, ConversationData)
+            else None,
             metadata={"turn_id": plan.incoming.metadata.turn_id},
             tracing_context=TracingContext(
                 session_id=plan.incoming.metadata.session_id or plan.incoming.metadata.runtime_id,

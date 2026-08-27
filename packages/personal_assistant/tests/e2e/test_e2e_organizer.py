@@ -28,9 +28,7 @@ def organizer_callback(monkeypatch):
 _SCENARIO_NAMES = ("classify_project_note", "classify_resource_note")
 
 
-@pytest.mark.parametrize(
-    "scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES
-)
+@pytest.mark.parametrize("scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES)
 def test_organizer_e2e(organizer_callback, scenario_name):
     from personal_assistant.agents.organizer.evaluation import ORGANIZER_TOOL_SCENARIOS
 

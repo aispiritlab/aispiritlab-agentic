@@ -2,10 +2,11 @@ import os
 from pathlib import Path
 import subprocess
 
-from agentic import git_tracer
-from agentic.tools import Toolset
 import orjson
 import structlog
+
+from agentic import git_tracer
+from agentic.tools import Toolset
 
 HOME = Path.home()
 logger = structlog.get_logger(__name__)
@@ -16,7 +17,6 @@ def _user_personalization_path(user: str | None = None) -> Path:
     """Return personalization path for a user slug (falls back to legacy)."""
     try:
         from agentic_runtime.users import personalization_path
-
         from personal_assistant import get_active_user
 
         return personalization_path(user or get_active_user())
@@ -82,9 +82,7 @@ def update_personalization(
     except (FileNotFoundError, ModuleNotFoundError) as error:
         logger.warning("rag_bootstrap_skipped", error=str(error))
     else:
-        initial_rag([
-            doc for doc in documents if doc.page_content.strip() != ""
-        ])
+        initial_rag([doc for doc in documents if doc.page_content.strip() != ""])
 
     return "Personalizacja zapisana."
 
@@ -101,8 +99,10 @@ def _verify_vault_name(vault_name: str) -> tuple[bool, str]:
     except FileNotFoundError:
         return (
             False,
-            "Nie znaleziono polecenia 'obsidian'. "
-            "Zainstaluj Obsidian CLI albo ustaw zmienną OBSIDIAN_CLI_BIN.",
+            (
+                "Nie znaleziono polecenia 'obsidian'. "
+                "Zainstaluj Obsidian CLI albo ustaw zmienną OBSIDIAN_CLI_BIN."
+            ),
         )
 
     stdout = result.stdout.strip()
@@ -114,7 +114,6 @@ def _verify_vault_name(vault_name: str) -> tuple[bool, str]:
     if stderr:
         logger.warning("obsidian_cli_warning", warning=stderr)
     return True, ""
-
 
 
 toolset = Toolset([update_personalization])

@@ -36,8 +36,7 @@ def test_build_seed_scenarios_contains_reference_current_and_expanded_patterns()
     assert any(name.startswith("synthetic::direct_request::calendar::") for name in names)
     assert any(scenario.expected_agent == "calendar" for scenario in scenarios)
     assert any(
-        "<start_of_turn>model\nmanage_notes\n<end_of_turn>"
-        in scenario.render_user_input()
+        "<start_of_turn>model\nmanage_notes\n<end_of_turn>" in scenario.render_user_input()
         for scenario in scenarios
         if scenario.history
     )

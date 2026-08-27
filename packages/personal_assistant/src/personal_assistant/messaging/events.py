@@ -7,8 +7,12 @@ from agentic.workflow.messages import Event, Message, RecordedMessageMetadata
 from agentic_runtime.distributed.serialization import register_record_types
 
 
-def _metadata_with_updates(metadata: RecordedMessageMetadata, **updates: Any) -> RecordedMessageMetadata:
-    values = {field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)}
+def _metadata_with_updates(
+    metadata: RecordedMessageMetadata, **updates: Any
+) -> RecordedMessageMetadata:
+    values = {
+        field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)
+    }
     values.update(updates)
     return RecordedMessageMetadata(**values)
 
@@ -27,7 +31,8 @@ class CreatedNote(Event):
             kind="created_note",
             type="created_note",
             data=data or {"note_name": note_name, "note_content": note_content},
-            metadata=metadata or RecordedMessageMetadata(domain="manage_notes", target="organizer"),
+            metadata=metadata
+            or RecordedMessageMetadata(domain="manage_notes", target="organizer"),
         )
 
     @property

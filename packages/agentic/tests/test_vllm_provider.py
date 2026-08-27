@@ -8,7 +8,6 @@ from providers.models.response import ModelResponse
 from providers.orchestrator import ModelProvider
 from providers.vllm import VLLMProvider
 
-
 # ── Stubs ─────────────────────────────────────────────────────────────────────
 
 
@@ -23,9 +22,7 @@ class _StubCompletionOutput:
 class _StubRequestOutput:
     request_id: str = "req-001"
     prompt_token_ids: tuple[int, ...] = (10, 11)
-    outputs: list[_StubCompletionOutput] = field(
-        default_factory=lambda: [_StubCompletionOutput()]
-    )
+    outputs: list[_StubCompletionOutput] = field(default_factory=lambda: [_StubCompletionOutput()])
 
 
 class StubLLM:
@@ -72,9 +69,7 @@ class StubRayProcessor:
     """Mimics a Ray Data processor."""
 
     def __call__(self, ds: object) -> SimpleNamespace:
-        return SimpleNamespace(
-            take_all=lambda: [{"generated_text": "hello from ray"}]
-        )
+        return SimpleNamespace(take_all=lambda: [{"generated_text": "hello from ray"}])
 
 
 class StubNativeProvider:
@@ -85,7 +80,9 @@ class StubNativeProvider:
         return StubLLM()
 
     @classmethod
-    def build_model(cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object) -> object:
+    def build_model(
+        cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object
+    ) -> object:
         from providers.vllm.vllm_model import VllmNativeModel
 
         return VllmNativeModel(backend, model_name, config=config)
@@ -103,7 +100,9 @@ class StubOpenAIProvider:
         return StubOpenAIClient()
 
     @classmethod
-    def build_model(cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object) -> object:
+    def build_model(
+        cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object
+    ) -> object:
         from providers.vllm.vllm_model import VllmOpenAIModel
 
         return VllmOpenAIModel(model_name, backend, config=config)
@@ -165,7 +164,6 @@ def test_vllm_native_provider_loads_via_model_provider() -> None:
 
 class _StubSamplingParams:
     """Stand-in for vllm.SamplingParams when vllm is not installed."""
-    pass
 
 
 def test_vllm_native_model_response() -> None:
@@ -233,10 +231,12 @@ def test_vllm_openai_model_response_with_messages() -> None:
     from providers.vllm.vllm_model import VllmOpenAIModel
 
     model = VllmOpenAIModel("test-model", StubOpenAIClient())
-    resp = model.response([
-        {"role": "system", "content": "You are helpful."},
-        {"role": "user", "content": "Hello!"},
-    ])
+    resp = model.response(
+        [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Hello!"},
+        ]
+    )
     assert resp.text == "hello from openai"
 
 
@@ -259,9 +259,7 @@ def test_vllm_ray_model_response() -> None:
         return SimpleNamespace()
 
     processor = StubRayProcessor()
-    model = VllmRayModel(
-        processor, "test-model", dataset_factory=fake_dataset_factory
-    )
+    model = VllmRayModel(processor, "test-model", dataset_factory=fake_dataset_factory)
     resp = model.response("Hello")
     assert isinstance(resp, ModelResponse)
     assert resp.text == "hello from ray"

@@ -1,8 +1,8 @@
 from contextlib import contextmanager
 
-from providers.models.response import ModelResponse
 import agentic.vlm_call as vlm_call_module
 from agentic.vlm_call import VLMCall
+from providers.models.response import ModelResponse
 
 
 def test_vlm_call_passes_images_and_preserves_history(monkeypatch) -> None:
@@ -10,13 +10,13 @@ def test_vlm_call_passes_images_and_preserves_history(monkeypatch) -> None:
     captured_images: list[str | list[str] | None] = []
 
     class FakeModel:
-        def response(self, prompt, **kwargs) -> ModelResponse:  # noqa: ANN001
+        def response(self, prompt, **kwargs) -> ModelResponse:
             captured_prompts.append(prompt)
             captured_images.append(kwargs.get("image"))
             return ModelResponse(text="opis obrazu")
 
     class FakeProvider:
-        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+        def __init__(self, *args, **kwargs) -> None:
             del args, kwargs
             self._model_name = "fake-vlm"
             self._model = FakeModel()
@@ -56,13 +56,13 @@ def test_vlm_call_reset_clears_history(monkeypatch) -> None:
     captured_prompts: list[list[dict[str, str]]] = []
 
     class FakeModel:
-        def response(self, prompt, **kwargs) -> ModelResponse:  # noqa: ANN001
+        def response(self, prompt, **kwargs) -> ModelResponse:
             del kwargs
             captured_prompts.append(prompt)
             return ModelResponse(text="ok")
 
     class FakeProvider:
-        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+        def __init__(self, *args, **kwargs) -> None:
             del args, kwargs
             self._model_name = "fake-vlm"
             self._model = FakeModel()

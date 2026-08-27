@@ -2,12 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from personal_assistant.deciders import (
-    make_manage_notes_decider,
-    make_organizer_decider,
-    passthrough_decider,
-    sage_decider,
-)
+from agentic.tools import ToolRunResult, ToolRunStatus
 from agentic.workflow.messages import (
     AssistantMessage,
     ConversationData,
@@ -15,8 +10,14 @@ from agentic.workflow.messages import (
     RecordedMessageMetadata,
     UserMessage,
 )
-from personal_assistant.messaging.events import CreatedNote, NoteUpdated
 from agentic_runtime.reactor import LLMResponse
+from personal_assistant.deciders import (
+    make_manage_notes_decider,
+    make_organizer_decider,
+    passthrough_decider,
+    sage_decider,
+)
+from personal_assistant.messaging.events import CreatedNote, NoteUpdated
 
 
 class TestPassthroughDecider:
@@ -81,15 +82,23 @@ class TestManageNotesDecider:
         from personal_assistant.agents.manage_notes.commands import AddNoteCommand
 
         decider = make_manage_notes_decider(
-            toolsets=FakeToolsets({  # type: ignore[arg-type]
-                "add_note": AddNoteCommand(note_name="test", note="content"),
-            }),
+            toolsets=FakeToolsets(
+                {  # type: ignore[arg-type]
+                    "add_note": AddNoteCommand(note_name="test", note="content"),
+                }
+            ),
             resolve_note_path=lambda name: f"/notes/{name}.md",
             agent_name="manage_notes",
         )
         msg = LLMResponse(
             data=ConversationData(role="assistant", text="note created"),
             tool_calls=(("add_note", {"note_name": "test", "note": "content"}),),
+            _tool_results=(
+                ToolRunResult(
+                    tool_call=("add_note", {"note_name": "test", "note": "content"}),
+                    output="created",
+                ),
+            ),
             metadata=RecordedMessageMetadata(runtime_id="rt-1", turn_id="turn-1"),
         )
         result = decider(msg)
@@ -109,14 +118,22 @@ class TestManageNotesDecider:
         from personal_assistant.agents.manage_notes.commands import EditNoteCommand
 
         decider = make_manage_notes_decider(
-            toolsets=FakeToolsets({  # type: ignore[arg-type]
-                "edit_note": EditNoteCommand(note_name="existing", note="updated"),
-            }),
+            toolsets=FakeToolsets(
+                {  # type: ignore[arg-type]
+                    "edit_note": EditNoteCommand(note_name="existing", note="updated"),
+                }
+            ),
             resolve_note_path=lambda name: f"/notes/{name}.md",
         )
         msg = LLMResponse(
             data=ConversationData(role="assistant", text="note updated"),
             tool_calls=(("edit_note", {"note_name": "existing"}),),
+            _tool_results=(
+                ToolRunResult(
+                    tool_call=("edit_note", {"note_name": "existing"}),
+                    output="updated",
+                ),
+            ),
             metadata=RecordedMessageMetadata(runtime_id="rt-1", turn_id="turn-1"),
         )
         result = decider(msg)
@@ -125,6 +142,30 @@ class TestManageNotesDecider:
         assert isinstance(result[0], NoteUpdated)
         assert result[0].note_name == "existing"
         assert result[0].note_path == "/notes/existing.md"
+
+    def test_failed_executed_tool_does_not_emit_domain_event(self) -> None:
+        from personal_assistant.agents.manage_notes.commands import AddNoteCommand
+
+        decider = make_manage_notes_decider(
+            toolsets=FakeToolsets(
+                {"add_note": AddNoteCommand(note_name="test", note="content")}
+            ),  # type: ignore[arg-type]
+            resolve_note_path=lambda name: f"/notes/{name}.md",
+        )
+        tool_call = ("add_note", {"note_name": "test", "note": "content"})
+        msg = LLMResponse(
+            data=ConversationData(role="assistant", text="failed"),
+            tool_calls=(tool_call,),
+            _tool_results=(
+                ToolRunResult(
+                    tool_call=tool_call,
+                    output="Error: write failed",
+                    status=ToolRunStatus.ERROR,
+                ),
+            ),
+        )
+
+        assert decider(msg) == []
 
     def test_unknown_tool_returns_empty(self) -> None:
         decider = make_manage_notes_decider(

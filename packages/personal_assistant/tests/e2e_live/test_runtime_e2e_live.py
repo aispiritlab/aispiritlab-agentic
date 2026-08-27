@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
+
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
     Event,
@@ -66,7 +67,10 @@ def _complete_personalization(live_runtime) -> list[tuple[str, str]]:
             return transcript
 
         normalized = reply.lower()
-        if "jak mam się do ciebie zwracać" in normalized or "jak mam sie do ciebie zwracac" in normalized:
+        if (
+            "jak mam się do ciebie zwracać" in normalized
+            or "jak mam sie do ciebie zwracac" in normalized
+        ):
             pending_message = "Mam na imię E2E Tester."
             continue
         if "podaj nazwę vaulta" in normalized or "podaj nazwe vaulta" in normalized:

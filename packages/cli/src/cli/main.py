@@ -1,8 +1,8 @@
 """Command-line interface for AI Spirit Agent."""
 
 from collections.abc import Callable
-import sys
 from pathlib import Path
+import sys
 
 import click
 
@@ -16,14 +16,15 @@ from personal_assistant import (
     shutdown_application,
 )
 
-
 PROMPT_CHOICES = {
     "Manage notes": Prompts.MANAGE_NOTES.value,
     "Discovery notes": Prompts.DISCOVERY_NOTES.value,
     "Sage": Prompts.SAGE.value,
     "Greetings": Prompts.GREETING.value,
 }
-DEFAULT_NOTES_EVALUATION_DEFINITION = "personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION"
+DEFAULT_NOTES_EVALUATION_DEFINITION = (
+    "personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION"
+)
 
 
 @click.group(invoke_without_command=True)
@@ -63,7 +64,6 @@ def ask(query: tuple[str, ...]) -> None:
     run_single_query(query, ai_spirit_agent)
 
 
-
 @cli.command("runtime-interactive")
 def runtime_interactive() -> None:
     """Launch the interactive Textual chat client."""
@@ -88,7 +88,9 @@ def run_single_query(query: tuple[str, ...], agent_fn: Callable[[str], str]) -> 
 
 
 @cli.command("get-prompt")
-@click.argument("prompt_name", type=click.Choice(list(PROMPT_CHOICES.keys()), case_sensitive=False))
+@click.argument(
+    "prompt_name", type=click.Choice(list(PROMPT_CHOICES.keys()), case_sensitive=False)
+)
 def get_prompt_command(prompt_name: str) -> None:
     """Print selected prompt template from registry.
 
@@ -454,9 +456,7 @@ def _parse_runtime_options(items: tuple[str, ...]) -> dict[str, str]:
     for item in items:
         key, separator, value = item.partition("=")
         if not separator or not key.strip():
-            raise click.BadParameter(
-                f"Niepoprawna opcja runtime: {item}. Użyj formatu KEY=VALUE."
-            )
+            raise click.BadParameter(f"Niepoprawna opcja runtime: {item}. Użyj formatu KEY=VALUE.")
         runtime_options[key.strip()] = value
     return runtime_options
 

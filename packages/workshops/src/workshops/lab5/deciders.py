@@ -3,11 +3,13 @@
 Each router takes a Message and returns commands/events to append to the stream.
 Routers decide WHAT happens, not HOW.
 """
+
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from collections.abc import Sequence
 
-from agentic.workflow.messages import Message, RecordedMessageMetadata, UserMessage
+from agentic.workflow.conversation import message_text, reply_metadata
+from agentic.workflow.messages import Message, UserMessage
 from agentic.workflow.reactor import LLMResponse, MessageRouter
 
 from .messages import ImageDescribed, ImageMessage
@@ -32,13 +34,9 @@ def make_image_decider(image_path: str = "") -> MessageRouter:
         if isinstance(msg, LLMResponse):
             return [
                 ImageDescribed(
-                    metadata=RecordedMessageMetadata(
-                        runtime_id=msg.metadata.runtime_id,
-                        turn_id=msg.metadata.turn_id,
-                        source="image_summary",
-                    ),
+                    metadata=reply_metadata(msg, source="image_summary"),
                     image_path=captured_path,
-                    description=msg.text or "",
+                    description=message_text(msg),
                 )
             ]
         return []

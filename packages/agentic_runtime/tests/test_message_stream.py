@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from agentic_runtime.messaging.message_stream import InMemoryMessageStream, project
-from agentic_runtime.messaging.messages import AssistantMessage, ConversationData, Message, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    Message,
+    UserMessage,
+)
 
 
 def _user(text: str) -> UserMessage:

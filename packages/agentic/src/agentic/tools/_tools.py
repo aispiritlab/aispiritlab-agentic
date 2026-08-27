@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 import inspect
 import re
 import types
-from typing import Any, Callable, Union, get_args, get_origin, get_type_hints
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 import orjson
 import structlog
-
 
 ToolCall = tuple[str, dict[str, Any]]
 JsonRepairer = Callable[[str, str], Any | None]
@@ -19,8 +19,6 @@ logger = structlog.get_logger(__name__)
 @dataclass(frozen=True)
 class Command:
     """Base class for tool commands. Each tool registers its own subclass."""
-
-    pass
 
 
 @dataclass(frozen=True)
@@ -240,9 +238,7 @@ class Tool:
             return None
 
         definition: Any
-        if isinstance(payload, dict):
-            definition = payload
-        elif isinstance(payload, list):
+        if isinstance(payload, (dict, list)):
             definition = payload
         elif isinstance(payload, str):
             definition = JsonParser.parse_tool_call(payload, repairer=repairer)
@@ -251,9 +247,10 @@ class Tool:
 
         if isinstance(definition, list):
             for item in definition:
-                if isinstance(item, dict):
-                    if tool_call := Tool._extract_direct_function_call(item):
-                        return tool_call
+                if isinstance(item, dict) and (
+                    tool_call := Tool._extract_direct_function_call(item)
+                ):
+                    return tool_call
             return None
 
         if isinstance(definition, dict):

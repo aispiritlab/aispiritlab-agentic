@@ -5,7 +5,6 @@ from typing import Any
 from agentic.agent import AgentResult
 from agentic.core_agent import CoreAgentResponse
 from agentic.tools import ToolRunResult
-
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
     ConversationData,
@@ -102,7 +101,9 @@ class TestLLMReactor:
         agent = FakeAgent([response])
         reactor = LLMReactor(agent=agent)  # type: ignore[arg-type]
 
-        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="create note")))
+        result = reactor.invoke(
+            UserMessage(data=ConversationData(role="user", text="create note"))
+        )
         assert isinstance(result, LLMResponse)
         assert result.has_tool_calls is True
         assert result.tool_calls == (("add_note", {"name": "test", "content": "hello"}),)
@@ -157,7 +158,9 @@ class TestMultiTurnLLMReactor:
         agent = FakeAgent([first, second])
         reactor = MultiTurnLLMReactor(agent=agent)  # type: ignore[arg-type]
 
-        result = reactor.invoke(UserMessage(data=ConversationData(role="user", text="find something")))
+        result = reactor.invoke(
+            UserMessage(data=ConversationData(role="user", text="find something"))
+        )
         assert isinstance(result, LLMResponse)
         assert result.data.text == "final answer"
         assert len(agent.calls) == 2

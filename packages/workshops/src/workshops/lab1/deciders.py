@@ -3,10 +3,12 @@
 Each decider takes a Message and returns commands/events to append to the stream.
 Deciders decide WHAT happens, not HOW.
 """
+
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
+from agentic.workflow.conversation import message_text, reply_metadata
 from agentic.workflow.messages import Message, UserMessage
 from agentic.workflow.reactor import LLMResponse
 
@@ -24,10 +26,8 @@ def writer_decider(msg: Message) -> Sequence[Message]:
     if isinstance(msg, LLMResponse):
         return [
             WriterCompleted(
-                runtime_id=msg.runtime_id,
-                turn_id=msg.turn_id,
-                source="writer",
-                writer_output=msg.text or "",
+                writer_output=message_text(msg),
+                metadata=reply_metadata(msg, source="writer"),
             )
         ]
     return []

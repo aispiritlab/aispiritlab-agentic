@@ -1,7 +1,8 @@
 from pathlib import Path
 
-from .documents import Document
 from knowledge_base.splitters.splitter import split_markdown
+
+from .documents import Document
 
 
 def _resolve_vault_path() -> Path:
@@ -33,7 +34,10 @@ def load_vault_markdown_dataset() -> list[Document]:
 
     return documents
 
-def load_vault_markdown_dataset_after_modified(after_modified: float | None = None) -> list[Document]:
+
+def load_vault_markdown_dataset_after_modified(
+    after_modified: float | None = None,
+) -> list[Document]:
     vault_path = _resolve_vault_path()
     documents: list[Document] = []
 
@@ -57,6 +61,7 @@ def load_vault_markdown_dataset_after_modified(after_modified: float | None = No
             )
 
     return documents
+
 
 def load_vault_markdown_dataset_by_path(path: Path) -> list[Document]:
     last_modified = path.stat().st_mtime

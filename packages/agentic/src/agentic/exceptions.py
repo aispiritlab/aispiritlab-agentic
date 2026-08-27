@@ -98,7 +98,7 @@ class RetryPolicy:
             case "fixed":
                 return self.wait_seconds
             case "exponential":
-                delay = self.wait_seconds * (self.wait_multiplier ** attempt)
+                delay = self.wait_seconds * (self.wait_multiplier**attempt)
                 return min(delay, self.wait_max_seconds)
 
 

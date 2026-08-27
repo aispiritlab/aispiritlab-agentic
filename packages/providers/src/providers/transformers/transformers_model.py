@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import time
 from threading import Lock
+import time
 from typing import Any
 
 from structlog import get_logger
 
-from providers.models.config import ModelConfig
+from providers.models.config import DEFAULT_MODEL_CONFIG, ModelConfig
 from providers.models.response import ModelResponse
 
 logger = get_logger(__name__)
@@ -19,7 +19,7 @@ class TransformersModel:
         self,
         backend: tuple[object, object],
         model_name: str,
-        config: ModelConfig = ModelConfig(),
+        config: ModelConfig = DEFAULT_MODEL_CONFIG,
         *,
         inference_lock: Lock | None = None,
     ) -> None:

@@ -20,9 +20,7 @@ def router_callback():
     yield callback
 
 
-@pytest.mark.parametrize(
-    "scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES
-)
+@pytest.mark.parametrize("scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES)
 def test_router_e2e(router_callback, scenario_name):
     from personal_assistant.agents.router.evaluation import ROUTER_TOOL_SCENARIOS
 

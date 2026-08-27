@@ -11,11 +11,11 @@ Commands:
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import os
+from pathlib import Path
 import random
 import sys
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
 import yaml
@@ -363,7 +363,14 @@ def cmd_write_configs(args: argparse.Namespace) -> None:
             out_path = output_dir / filename
 
             with open(out_path, "w", encoding="utf-8") as f:
-                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False, width=120)
+                yaml.dump(
+                    cfg,
+                    f,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False,
+                    width=120,
+                )
 
             print(f"  wrote {out_path}")
 
@@ -384,8 +391,7 @@ def cmd_merge(args: argparse.Namespace) -> None:
     jsonl_files = sorted(data_dir.glob("*.jsonl"))
     # Exclude topic files and the output file itself
     jsonl_files = [
-        f for f in jsonl_files
-        if "-topics.jsonl" not in f.name and f.name != output_path.name
+        f for f in jsonl_files if "-topics.jsonl" not in f.name and f.name != output_path.name
     ]
 
     if not jsonl_files:
@@ -412,8 +418,7 @@ def cmd_merge(args: argparse.Namespace) -> None:
         random.shuffle(rows)
 
     with open(output_path, "w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(row + "\n")
+        f.writelines(row + "\n" for row in rows)
 
     print(f"Merged {len(rows)} samples from {len(jsonl_files)} files → {output_path}")
 
@@ -443,7 +448,6 @@ def main() -> None:
     mg.add_argument("--output", "-o", default=None, help="Output file path")
     mg.add_argument("--dedup", action="store_true", help="Remove duplicate rows")
     mg.add_argument("--shuffle", action="store_true", help="Shuffle output rows")
-
     args = parser.parse_args()
 
     if args.command == "write-configs":

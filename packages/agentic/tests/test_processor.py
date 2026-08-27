@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
+from agentic.workflow.errors import ConcurrencyConflictError, IllegalStateError
 from agentic.workflow.event_store import InMemoryEventStore
 from agentic.workflow.messages import Event
 from agentic.workflow.processor import (
     InMemoryCheckpointStore,
+    InMemoryProcessorLock,
     MessageProcessor,
     ProcessorConfig,
     StartFrom,
@@ -268,3 +272,95 @@ class TestMessageProcessorLifecycle:
 
         total = processor.process(event_store, "orders")
         assert total == 0
+
+
+class TestGlobalFeedAndFencing:
+    def test_global_feed_preserves_commit_order_across_streams(self) -> None:
+        event_store = InMemoryEventStore()
+        event_store.append_to_stream("orders:1", (_event("order.created"),))
+        event_store.append_to_stream("research:1", (_event("research.started"),))
+        event_store.append_to_stream("orders:2", (_event("order.created"),))
+        collected: list[Event] = []
+        processor = MessageProcessor(
+            config=ProcessorConfig(processor_id="all-events", batch_size=2),
+            handler=lambda events: collected.extend(events),
+            checkpoint_store=InMemoryCheckpointStore(),
+        )
+
+        processor.start(event_store)
+        processed = processor.run_to_end(event_store)
+
+        assert processed == 3
+        assert [event.metadata.global_position for event in collected] == [0, 1, 2]
+        assert processor.stats.processed_batches == 2
+        assert processor.stats.lag == 0
+
+    def test_processor_versions_have_independent_rebuild_checkpoints(self) -> None:
+        event_store = InMemoryEventStore()
+        _seed_stream(event_store, "orders", 2)
+        checkpoints = InMemoryCheckpointStore()
+        first: list[Event] = []
+        rebuilt: list[Event] = []
+        v1 = MessageProcessor(
+            config=ProcessorConfig(processor_id="orders-view", version=1),
+            handler=lambda events: first.extend(events),
+            checkpoint_store=checkpoints,
+        )
+        v2 = MessageProcessor(
+            config=ProcessorConfig(processor_id="orders-view", version=2),
+            handler=lambda events: rebuilt.extend(events),
+            checkpoint_store=checkpoints,
+        )
+
+        v1.start(event_store, "orders")
+        v1.run_to_end(event_store, "orders")
+        v2.start(event_store, "orders")
+        v2.run_to_end(event_store, "orders")
+
+        assert len(first) == 2
+        assert len(rebuilt) == 2
+
+    def test_compare_and_swap_never_overwrites_a_newer_checkpoint(self) -> None:
+        event_store = InMemoryEventStore()
+        _seed_stream(event_store, "orders", 2)
+        checkpoints = InMemoryCheckpointStore()
+        checkpoint_key = "orders-view:v1:pdefault:source:orders"
+
+        def racing_handler(events: object) -> None:
+            del events
+            checkpoints.store(checkpoint_key, 99)
+
+        processor = MessageProcessor(
+            config=ProcessorConfig(processor_id="orders-view"),
+            handler=racing_handler,
+            checkpoint_store=checkpoints,
+        )
+        processor.start(event_store, "orders")
+
+        with pytest.raises(ConcurrencyConflictError):
+            processor.process(event_store, "orders")
+        assert checkpoints.read(checkpoint_key) == 99
+
+    def test_lease_prevents_two_processors_owning_same_partition(self) -> None:
+        event_store = InMemoryEventStore()
+        checkpoints = InMemoryCheckpointStore()
+        lock = InMemoryProcessorLock()
+        first = MessageProcessor(
+            config=ProcessorConfig(processor_id="orders-view", instance_id="one"),
+            handler=lambda events: None,
+            checkpoint_store=checkpoints,
+            lock=lock,
+        )
+        second = MessageProcessor(
+            config=ProcessorConfig(processor_id="orders-view", instance_id="two"),
+            handler=lambda events: None,
+            checkpoint_store=checkpoints,
+            lock=lock,
+        )
+
+        first.start(event_store, "orders")
+        with pytest.raises(IllegalStateError):
+            second.start(event_store, "orders")
+        first.close()
+        second.start(event_store, "orders")
+        assert second.is_active

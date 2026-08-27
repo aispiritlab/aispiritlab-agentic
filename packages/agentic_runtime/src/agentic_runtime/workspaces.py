@@ -10,11 +10,13 @@ datasets and MLflow experiments can be filtered per workspace.
 from __future__ import annotations
 
 import contextvars
-import json
-import re
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+import json
 from pathlib import Path
+import shutil
+
+from agentic_runtime.slugs import resolve_child, slugify, validate_slug
 
 _ROOT = Path.home() / ".aispiritagent"
 _WORKSPACES_DIR = _ROOT / "workspaces"
@@ -50,12 +52,11 @@ class WorkspacePreset:
 
 
 def _slugify(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-    return slug or "workspace"
+    return slugify(name, fallback="workspace")
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +65,11 @@ def _now_iso() -> str:
 
 
 def workspace_dir(slug: str) -> Path:
-    return _WORKSPACES_DIR / slug
+    """Return the directory for a workspace slug.
+
+    Raises ``InvalidSlugError`` if the slug is not a safe path segment.
+    """
+    return resolve_child(_WORKSPACES_DIR, slug, kind="workspace slug")
 
 
 def graph_path(slug: str) -> Path:
@@ -81,7 +86,7 @@ def _read_config(slug: str) -> WorkspacePreset | None:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return None
     if not isinstance(data, dict):
         return None
@@ -172,13 +177,15 @@ def update_workspace_graph(slug: str, graph_json: str) -> None:
 
 
 def delete_workspace(slug: str) -> None:
-    """Delete a workspace. Cannot delete 'default'."""
+    """Delete an existing workspace. Cannot delete 'default'."""
+    validate_slug(slug, kind="workspace slug")
     if slug == "default":
         raise ValueError("Cannot delete the default workspace.")
-    import shutil
+    if _read_config(slug) is None:
+        raise ValueError(f"Unknown workspace {slug!r}.")
 
     directory = workspace_dir(slug)
-    if directory.exists():
+    if directory.is_dir():
         shutil.rmtree(directory)
 
 

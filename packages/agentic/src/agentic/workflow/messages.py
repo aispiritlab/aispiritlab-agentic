@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field, replace
+import time
 from typing import Any
+import uuid
 
 from agentic.observability import TraceSnapshot, build_trace_snapshot
+
+_RECORD_CONTRACT_NAMES: dict[type[object], str] = {}
+
+
+def _bind_record_contract(record_type: type[object], contract_name: str) -> None:
+    _RECORD_CONTRACT_NAMES[record_type] = contract_name
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -13,11 +21,28 @@ class MessageMetadata:
     session_id: str = ""
     turn_id: str = ""
     reply_to_message_id: str | None = None
+    correlation_id: str = ""
+    causation_id: str | None = None
+    idempotency_key: str = ""
     domain: str = ""
     source: str = ""
     target: str | None = None
+    tenant_id: str = ""
+    workspace_id: str = ""
     role: str = ""
     scope: str = "canonical"
+    contract_name: str = ""
+    schema_version: int = 1
+    model_name: str = ""
+    model_provider: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    model_latency_ms: float | None = None
+    finish_reason: str = ""
+    generation_config_hash: str = ""
+    occurred_at_ns: int = 0
+    recorded_at_ns: int | None = None
     chunk_index: int | None = None
     chunk_count: int | None = None
     tool_call_id: str | None = None
@@ -25,6 +50,7 @@ class MessageMetadata:
     prompt_name: str | None = None
     prompt_hash: str | None = None
     status: str | None = None
+    workflow_action: str | None = None
     stream_name: str = ""
     stream_position: int | None = None
     global_position: int | None = None
@@ -42,7 +68,11 @@ class MessageMetadata:
 
     @property
     def parent_span_id(self) -> str | None:
-        return None if self.trace is None or not self.trace.parent_span_id else self.trace.parent_span_id
+        return (
+            None
+            if self.trace is None or not self.trace.parent_span_id
+            else self.trace.parent_span_id
+        )
 
     @property
     def span_name(self) -> str | None:
@@ -80,7 +110,14 @@ class Message:
         trace = updates.pop("trace", self.metadata.trace)
         if any(
             key in updates
-            for key in ("session_id", "trace_id", "span_id", "parent_span_id", "span_name", "span_type")
+            for key in (
+                "session_id",
+                "trace_id",
+                "span_id",
+                "parent_span_id",
+                "span_name",
+                "span_type",
+            )
         ):
             trace = build_trace_snapshot(
                 trace,
@@ -105,6 +142,50 @@ class Message:
         return replace(self, data=replace(self.data, **updates))
 
 
+def normalize_recorded_message(
+    message: Message,
+    *,
+    stream_name: str | None = None,
+    stream_position: int | None = None,
+    global_position: int | None = None,
+    recorded_at_ns: int | None = None,
+) -> Message:
+    """Complete the durable envelope while preserving explicitly supplied values."""
+    now_ns = time.time_ns()
+    updates: dict[str, Any] = {}
+    metadata = message.metadata
+    message_id = getattr(metadata, "message_id", "")
+    if isinstance(metadata, RecordedMessageMetadata):
+        if not message_id:
+            message_id = str(uuid.uuid4())
+            updates["message_id"] = message_id
+        if not metadata.event_id:
+            updates["event_id"] = str(uuid.uuid4())
+    if not metadata.turn_id and metadata.runtime_id:
+        updates["turn_id"] = metadata.runtime_id
+    if not metadata.correlation_id:
+        updates["correlation_id"] = metadata.turn_id or metadata.runtime_id or message_id
+    if metadata.causation_id is None and metadata.reply_to_message_id:
+        updates["causation_id"] = metadata.reply_to_message_id
+    if not metadata.idempotency_key and message_id:
+        updates["idempotency_key"] = message_id
+    if not metadata.contract_name:
+        updates["contract_name"] = (
+            _RECORD_CONTRACT_NAMES.get(type(message), "") or message.type
+        )
+    if metadata.occurred_at_ns <= 0:
+        updates["occurred_at_ns"] = now_ns
+    if stream_name is not None:
+        updates["stream_name"] = stream_name
+    if stream_position is not None:
+        updates["stream_position"] = stream_position
+    if global_position is not None:
+        updates["global_position"] = global_position
+    if recorded_at_ns is not None:
+        updates["recorded_at_ns"] = recorded_at_ns
+    return message.with_metadata(**updates) if updates else message
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class UserMessage(Message):
     kind: str = "conversation"
@@ -120,7 +201,9 @@ Conversation = UserMessage
 class AssistantMessage(Message):
     kind: str = "assistant_message"
     type: str = "assistant_message"
-    data: ConversationData = field(default_factory=lambda: ConversationData(role="assistant", text=""))
+    data: ConversationData = field(
+        default_factory=lambda: ConversationData(role="assistant", text="")
+    )
     metadata: RecordedMessageMetadata = field(default_factory=RecordedMessageMetadata)
 
 
@@ -128,7 +211,9 @@ class AssistantMessage(Message):
 class PromptSnapshot(Message):
     kind: str = "prompt_snapshot"
     type: str = "prompt_snapshot"
-    data: ConversationData = field(default_factory=lambda: ConversationData(role="system", text="", payload={}))
+    data: ConversationData = field(
+        default_factory=lambda: ConversationData(role="system", text="", payload={})
+    )
     metadata: RecordedMessageMetadata = field(default_factory=RecordedMessageMetadata)
 
 
@@ -136,7 +221,9 @@ class PromptSnapshot(Message):
 class ToolResultMessage(Message):
     kind: str = "tool_result"
     type: str = "tool_result"
-    data: ConversationData = field(default_factory=lambda: ConversationData(role="tool", text="", payload={}))
+    data: ConversationData = field(
+        default_factory=lambda: ConversationData(role="tool", text="", payload={})
+    )
     metadata: RecordedMessageMetadata = field(default_factory=RecordedMessageMetadata)
 
 
@@ -169,29 +256,39 @@ class ToolCallEvent(Event):
 class TurnStarted(Event):
     kind: str = "turn_started"
     type: str = "turn_started"
-    metadata: RecordedMessageMetadata = field(default_factory=lambda: RecordedMessageMetadata(scope="transport"))
+    metadata: RecordedMessageMetadata = field(
+        default_factory=lambda: RecordedMessageMetadata(scope="transport")
+    )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TurnCompleted(Event):
     kind: str = "turn_completed"
     type: str = "turn_completed"
-    metadata: RecordedMessageMetadata = field(default_factory=lambda: RecordedMessageMetadata(scope="transport"))
+    metadata: RecordedMessageMetadata = field(
+        default_factory=lambda: RecordedMessageMetadata(scope="transport")
+    )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MessageStarted(Event):
     kind: str = "message_started"
     type: str = "message_started"
-    metadata: RecordedMessageMetadata = field(default_factory=lambda: RecordedMessageMetadata(scope="transport"))
+    metadata: RecordedMessageMetadata = field(
+        default_factory=lambda: RecordedMessageMetadata(scope="transport")
+    )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MessageChunk(Message):
     kind: str = "message_chunk"
     type: str = "message_chunk"
-    data: ConversationData = field(default_factory=lambda: ConversationData(role="assistant", text=""))
-    metadata: RecordedMessageMetadata = field(default_factory=lambda: RecordedMessageMetadata(scope="transport"))
+    data: ConversationData = field(
+        default_factory=lambda: ConversationData(role="assistant", text="")
+    )
+    metadata: RecordedMessageMetadata = field(
+        default_factory=lambda: RecordedMessageMetadata(scope="transport")
+    )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

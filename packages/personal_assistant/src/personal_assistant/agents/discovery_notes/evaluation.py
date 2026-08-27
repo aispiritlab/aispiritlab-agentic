@@ -7,13 +7,11 @@ from agentic.message import UserMessage
 from agentic.prompts import GemmaPromptBuilder, QwenPromptBuilder
 from agentic.tools import Toolsets
 from evaluation import EvaluationDefinition, ToolScenario, serialize_scenarios_to_json
-
 from personal_assistant.settings import settings
 
 from .detective_agent import DiscoveryNotesAgent
 from .flows import DEFAULT_DISCOVERY_NOTE_FLOWS
 from .tools import toolset as discovery_notes_toolset
-
 
 DISCOVERY_NOTES_TOOL_SCENARIOS: tuple[ToolScenario, ...] = (
     ToolScenario(
@@ -94,9 +92,7 @@ class DiscoveryNotesEvalCallback:
             else ""
         )
         message_with_history = "\n".join(
-            turn
-            for turn in [history_text, UserMessage(user_input).as_turn()]
-            if turn
+            turn for turn in [history_text, UserMessage(user_input).as_turn()] if turn
         )
         prompt = agent.system_prompt.build_prompt(
             message_with_history,

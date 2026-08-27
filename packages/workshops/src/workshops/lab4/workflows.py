@@ -3,11 +3,13 @@
 Each workflow wraps an agent and returns a WorkflowExecution.
 The runtime calls handler(UserMessage) and gets back structured results.
 """
+
 from __future__ import annotations
 
 from agentic.core_agent import CoreAgentic
-from agentic.specialized_agents import PlannerAgent, TaskDelegated
+from agentic.specialized_agents import PlannerAgent
 from agentic.workflow import WorkflowBuilder
+from agentic.workflow.conversation import message_text
 from agentic.workflow.execution import WorkflowExecution
 from agentic.workflow.messages import UserMessage
 
@@ -20,7 +22,7 @@ def make_planner_workflow(planner: PlannerAgent):
     """
 
     def handle(message: UserMessage) -> WorkflowExecution:
-        tasks = planner.plan(message.text or "")
+        tasks = planner.plan(message_text(message))
         return WorkflowExecution(
             text=f"Plan created with {len(tasks)} step(s).",
             emitted_events=tuple(tasks),

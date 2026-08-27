@@ -7,13 +7,11 @@ from agentic.message import UserMessage
 from agentic.prompts import GemmaPromptBuilder, QwenPromptBuilder
 from agentic.tools import Toolsets
 from evaluation import EvaluationDefinition, ToolScenario, serialize_scenarios_to_json
-
 from personal_assistant.settings import settings
 
 from .flows import DEFAULT_ORGANIZER_FLOWS
 from .organizer_agent import OrganizerAgent
 from .tools import toolset as organizer_toolset
-
 
 ORGANIZER_TOOL_SCENARIOS: tuple[ToolScenario, ...] = (
     ToolScenario(
@@ -127,9 +125,7 @@ class OrganizerEvalCallback:
             else ""
         )
         message_with_history = "\n".join(
-            turn
-            for turn in [history_text, UserMessage(user_input).as_turn()]
-            if turn
+            turn for turn in [history_text, UserMessage(user_input).as_turn()] if turn
         )
         prompt = agent.system_prompt.build_prompt(
             message_with_history,
@@ -166,9 +162,7 @@ ORGANIZER_EVALUATION = EvaluationDefinition(
     prompt_loader=_load_organizer_prompt,
     agent_callback_factory=_create_organizer_callback,
     conversation_simulator_factory=OrganizerToolResultSimulator,
-    assistant_greeting=(
-        "Cześć! Sklasyfikuję notatkę metodą PARA i dodam odpowiedni tag."
-    ),
+    assistant_greeting=("Cześć! Sklasyfikuję notatkę metodą PARA i dodam odpowiedni tag."),
     scenarios_example=serialize_scenarios_to_json(ORGANIZER_TOOL_SCENARIOS),
 )
 

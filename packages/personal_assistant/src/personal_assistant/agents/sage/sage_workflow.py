@@ -3,12 +3,10 @@ from __future__ import annotations
 from agentic.prompts import QwenPromptBuilder
 from agentic.workflow import WorkflowBuilder
 from agentic.workflow._workflow import AgenticWorkflow
-from registry import Prompts
-
-from agentic.workflow.messages import Message, UserCommand, UserMessage
+from agentic.workflow.messages import Message
 from agentic_runtime.execution import WorkflowExecution
-
 from personal_assistant.settings import settings
+from registry import Prompts
 
 from .sage_agent import SageAgent
 
@@ -38,22 +36,7 @@ class SageWorkflow(AgenticWorkflow):
         self.description = self._workflow.description
 
     def handle(self, message: Message) -> WorkflowExecution | str:
-        workflow = getattr(self, "_workflow", None)
-        if workflow is not None:
-            return workflow.handle(message)
-        if isinstance(message, UserCommand):
-            if message.type == "start":
-                return self._agent.start()
-            if message.type == "reset":
-                self._agent.reset()
-            return ""
-        if isinstance(message, UserMessage):
-            return self._agent.respond(message.data.text).output
-        return ""
+        return self._workflow.handle(message)
 
     def close(self) -> None:
-        workflow = getattr(self, "_workflow", None)
-        if workflow is not None:
-            workflow.close()
-            return
-        self._agent.close()
+        self._workflow.close()

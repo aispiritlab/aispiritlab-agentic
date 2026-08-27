@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_REPORT_PATH = Path(
     "packages/evaluation/src/evaluation/notes_openrouter_benchmark_report.json"
 )
@@ -41,10 +40,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "report",
         nargs="?",
         default=str(DEFAULT_REPORT_PATH),
-        help=(
-            "Path to JSON report. Defaults to notes benchmark report "
-            f"({DEFAULT_REPORT_PATH})."
-        ),
+        help=(f"Path to JSON report. Defaults to notes benchmark report ({DEFAULT_REPORT_PATH})."),
     )
     parser.add_argument(
         "--top",
@@ -99,7 +95,7 @@ def _format_value(value: Any) -> str:
 
 
 def _select_columns(rows: list[dict[str, Any]]) -> list[str]:
-    present = {key for row in rows for key in row.keys()}
+    present = {key for row in rows for key in row}
     ordered = [key for key in PREFERRED_COLUMN_ORDER if key in present]
     remaining = sorted(present - set(ordered))
     return ordered + remaining
@@ -114,8 +110,7 @@ def _render_table(rows: list[dict[str, Any]], *, top: int | None = None) -> str:
 
     columns = _select_columns(rows)
     rendered_rows = [
-        {column: _format_value(row.get(column)) for column in columns}
-        for row in rows
+        {column: _format_value(row.get(column)) for column in columns} for row in rows
     ]
 
     widths = {
@@ -164,4 +159,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

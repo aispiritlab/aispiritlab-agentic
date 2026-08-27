@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import time
 from threading import Lock
+import time
 from typing import Any
 
 from structlog import get_logger
 
-from providers.models.config import ModelConfig
+from providers.models.config import DEFAULT_MODEL_CONFIG, ModelConfig
 from providers.models.response import ModelResponse
 
 logger = get_logger(__name__)
@@ -19,7 +19,7 @@ class SglangNativeModel:
         self,
         engine: object,
         model_name: str,
-        config: ModelConfig = ModelConfig(),
+        config: ModelConfig = DEFAULT_MODEL_CONFIG,
         *,
         inference_lock: Lock | None = None,
     ) -> None:
@@ -40,8 +40,13 @@ class SglangNativeModel:
             "presence_penalty": sampling.presence_penalty if sampling else 0.0,
         }
         for key in (
-            "frequency_penalty", "json_schema", "regex", "ebnf",
-            "stop", "stop_token_ids", "n",
+            "frequency_penalty",
+            "json_schema",
+            "regex",
+            "ebnf",
+            "stop",
+            "stop_token_ids",
+            "n",
         ):
             if key in kwargs:
                 params[key] = kwargs.pop(key)
@@ -98,7 +103,7 @@ class SglangOpenAIModel:
         self,
         model_name: str,
         client: object,
-        config: ModelConfig = ModelConfig(),
+        config: ModelConfig = DEFAULT_MODEL_CONFIG,
         *,
         inference_lock: Lock | None = None,
     ) -> None:
@@ -135,8 +140,15 @@ class SglangOpenAIModel:
         if sampling and sampling.top_k > 0:
             extra_body["top_k"] = sampling.top_k
         for key in (
-            "frequency_penalty", "json_schema", "regex", "ebnf",
-            "stop", "n", "min_p", "top_k", "repetition_penalty",
+            "frequency_penalty",
+            "json_schema",
+            "regex",
+            "ebnf",
+            "stop",
+            "n",
+            "min_p",
+            "top_k",
+            "repetition_penalty",
         ):
             if key in kwargs:
                 extra_body[key] = kwargs.pop(key)

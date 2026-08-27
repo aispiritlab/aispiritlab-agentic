@@ -67,7 +67,9 @@ class _FakeRegistry:
     def __init__(self, agents: list[AgentSnapshot] | None = None) -> None:
         self._agents = agents or []
 
-    def find_by_capability(self, capability: str, *, max_age_seconds: float) -> AgentSnapshot | None:
+    def find_by_capability(
+        self, capability: str, *, max_age_seconds: float
+    ) -> AgentSnapshot | None:
         del max_age_seconds
         for agent in self._agents:
             if capability in agent.capabilities:

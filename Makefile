@@ -26,9 +26,12 @@ format: ## Format and fix code with ruff
 	uv run ruff check --fix
 	uv run ruff format
 
+.PHONY: typecheck
+typecheck: ## Run ty type checking (reports; not yet a gate — see CI)
+	-uv run ty check
+
 .PHONY: mypy
-mypy: ## Run mypy type checking
-	uv run mypy .
+mypy: typecheck ## Deprecated alias for `make typecheck`
 
 #################################################################################
 # Testing                                                                       #
@@ -100,11 +103,11 @@ docker-build: ## Build the root Docker image
 
 .PHONY: mlflow
 mlflow: ## Start MLflow stack (Postgres + MinIO + MLflow server)
-	docker compose -f containers/docker-compose.yml up
+	docker compose --project-directory . -f containers/docker-compose.yml up
 
 .PHONY: mlflow-down
 mlflow-down: ## Stop MLflow stack
-	docker compose -f containers/docker-compose.yml down
+	docker compose --project-directory . -f containers/docker-compose.yml down
 
 .PHONY: mlflow-ui
 mlflow-ui: ## Start MLflow UI without Docker
@@ -113,11 +116,11 @@ mlflow-ui: ## Start MLflow UI without Docker
 
 .PHONY: mlflow-logs
 mlflow-logs: ## Tail MLflow stack logs
-	docker compose -f containers/docker-compose.yml logs -f
+	docker compose --project-directory . -f containers/docker-compose.yml logs -f
 
 .PHONY: redis
 redis: ## Start standalone Redis for local distributed dev
-	docker run --rm --name ai-spirit-redis -p 6379:6379 redis:8-alpine
+	docker run --rm --name ai-spirit-redis -p 6379:6379 redis:8.6-alpine
 
 .PHONY: redis-stop
 redis-stop: ## Stop standalone Redis container
@@ -125,25 +128,25 @@ redis-stop: ## Stop standalone Redis container
 
 .PHONY: lab6-up
 lab6-up: ## Start distributed Lab 6 stack
-	docker compose -f containers/docker-compose.lab6.yml up --build
+	docker compose --project-directory . -f containers/docker-compose.lab6.yml up --build
 
 .PHONY: lab6-down
 lab6-down: ## Stop distributed Lab 6 stack
-	docker compose -f containers/docker-compose.lab6.yml down
+	docker compose --project-directory . -f containers/docker-compose.lab6.yml down
 
 .PHONY: lab6-logs
 lab6-logs: ## Tail distributed Lab 6 stack logs
-	docker compose -f containers/docker-compose.lab6.yml logs -f
+	docker compose --project-directory . -f containers/docker-compose.lab6.yml logs -f
 
 .PHONY: lab6-restart
 lab6-restart: ## Restart distributed Lab 6 stack (rebuild)
-	docker compose -f containers/docker-compose.lab6.yml down
-	docker compose -f containers/docker-compose.lab6.yml up --build
+	docker compose --project-directory . -f containers/docker-compose.lab6.yml down
+	docker compose --project-directory . -f containers/docker-compose.lab6.yml up --build
 
 .PHONY: infra-status
 infra-status: ## Show status of all infrastructure containers
-	@echo "=== MLflow stack ===" && docker compose -f containers/docker-compose.yml ps 2>/dev/null || true
-	@echo "\n=== Lab 6 stack ===" && docker compose -f containers/docker-compose.lab6.yml ps 2>/dev/null || true
+	@echo "=== MLflow stack ===" && docker compose --project-directory . -f containers/docker-compose.yml ps 2>/dev/null || true
+	@echo "\n=== Lab 6 stack ===" && docker compose --project-directory . -f containers/docker-compose.lab6.yml ps 2>/dev/null || true
 
 #################################################################################
 # Data                                                                          #

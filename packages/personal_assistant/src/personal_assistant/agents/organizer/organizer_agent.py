@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from agentic.history import History
-from providers.orchestrator import ModelProvider
-from agentic.message import SystemMessage
-from agentic.metadata import Description
 from agentic.core_agent import CoreAgentic
-from .tools import toolset as organizer_toolset
+from agentic.history import History
+from agentic.message import AssistantMessage
+from agentic.metadata import Description
 from personal_assistant.settings import settings
+from providers.orchestrator import ModelProvider
+
+from .tools import toolset as organizer_toolset
 
 
 class OrganizerAgent(CoreAgentic):
@@ -29,7 +30,7 @@ class OrganizerAgent(CoreAgentic):
 
     def start(self) -> str:
         self._agent.history = History()
-        self._agent.history.add(SystemMessage(self._WELCOME_MESSAGE))
+        self._agent.history.add(AssistantMessage(self._WELCOME_MESSAGE))
         return self._WELCOME_MESSAGE
 
     def call(self, user_message: str) -> str:

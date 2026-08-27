@@ -7,11 +7,10 @@ from agentic.core_agent import CoreAgentic
 from agentic.integrations.search_provider import SearchProvider, normalize_results
 from agentic.message import ToolMessage
 from agentic.metadata import Description
+from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder
+from agentic.tools import Toolset, Toolsets
 from providers.models import ModelConfig
 from providers.orchestrator import ModelProviderType
-from agentic.tools import Toolset, Toolsets
-
-from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder
 
 if TYPE_CHECKING:
     from knowledge_base.documents import Document
@@ -31,13 +30,17 @@ def _truncate_text(value: str, *, limit: int) -> str:
     return text[: max(limit - 3, 0)].rstrip() + "..."
 
 
-def _compact_web_results(results: list[object], *, max_results: int = _MAX_TOOL_RESULTS) -> tuple[dict[str, str | None], ...]:
+def _compact_web_results(
+    results: list[object], *, max_results: int = _MAX_TOOL_RESULTS
+) -> tuple[dict[str, str | None], ...]:
     normalized = normalize_results(results[:max_results])
     return tuple(
         {
             "title": _truncate_text(str(item.get("title") or ""), limit=160),
             "url": _truncate_text(str(item.get("url") or ""), limit=240),
-            "snippet": _truncate_text(str(item.get("snippet") or ""), limit=_MAX_TOOL_SNIPPET_CHARS),
+            "snippet": _truncate_text(
+                str(item.get("snippet") or ""), limit=_MAX_TOOL_SNIPPET_CHARS
+            ),
             "published_at": (
                 _truncate_text(str(item.get("published_at") or ""), limit=64) or None
             ),
@@ -46,15 +49,20 @@ def _compact_web_results(results: list[object], *, max_results: int = _MAX_TOOL_
     )
 
 
-def _compact_knowledge_entries(entries: list[dict[str, str]], *, max_results: int = _MAX_TOOL_RESULTS) -> tuple[dict[str, str], ...]:
+def _compact_knowledge_entries(
+    entries: list[dict[str, str]], *, max_results: int = _MAX_TOOL_RESULTS
+) -> tuple[dict[str, str], ...]:
     return tuple(
         {
-            "content": _truncate_text(str(entry.get("content") or ""), limit=_MAX_TOOL_CONTENT_CHARS),
+            "content": _truncate_text(
+                str(entry.get("content") or ""), limit=_MAX_TOOL_CONTENT_CHARS
+            ),
             "url": _truncate_text(str(entry.get("url") or ""), limit=240),
             "keywords": _truncate_text(str(entry.get("keywords") or ""), limit=160),
         }
         for entry in entries[:max_results]
     )
+
 
 def _build_search_system_prompt(*, has_knowledge_base: bool) -> str:
     strategy_lines = [
@@ -69,9 +77,9 @@ def _build_search_system_prompt(*, has_knowledge_base: bool) -> str:
         strategy_lines.extend(
             [
                 '- Always include the required "query" parameter when calling knowledge_search or web_search.',
-                '- Example web search call:',
+                "- Example web search call:",
                 '<tool_call>{"name":"web_search","parameters":{"query":"latest AI news","count":5}}</tool_call>',
-                '- Example knowledge-base call:',
+                "- Example knowledge-base call:",
                 '<tool_call>{"name":"knowledge_search","parameters":{"query":"latest AI news","k":5}}</tool_call>',
                 "",
                 "Strategy:",
@@ -84,7 +92,7 @@ def _build_search_system_prompt(*, has_knowledge_base: bool) -> str:
         strategy_lines.extend(
             [
                 '- Always include the required "query" parameter when calling web_search.',
-                '- Example web search call:',
+                "- Example web search call:",
                 '<tool_call>{"name":"web_search","parameters":{"query":"latest AI news","count":5}}</tool_call>',
                 "",
                 "Strategy:",
@@ -162,11 +170,13 @@ class SearchAgent(CoreAgentic):
             entries: list[dict[str, str]] = []
             for doc in docs:
                 meta = doc.metadata
-                entries.append({
-                    "content": doc.page_content,
-                    "url": meta.get("url", ""),
-                    "keywords": meta.get("keywords", ""),
-                })
+                entries.append(
+                    {
+                        "content": doc.page_content,
+                        "url": meta.get("url", ""),
+                        "keywords": meta.get("keywords", ""),
+                    }
+                )
             return json.dumps(_compact_knowledge_entries(entries), ensure_ascii=False, indent=2)
 
         tools = [web_search]
@@ -239,12 +249,14 @@ class SearchAgent(CoreAgentic):
             for tool_result in response.tool_results:
                 tool_name, tool_args = tool_result.tool_call
                 parts.append(
-                    "\n".join([
-                        f"Tool: {tool_name}",
-                        f"Arguments: {json.dumps(tool_args, ensure_ascii=False)}",
-                        "Output:",
-                        tool_result.output,
-                    ])
+                    "\n".join(
+                        [
+                            f"Tool: {tool_name}",
+                            f"Arguments: {json.dumps(tool_args, ensure_ascii=False)}",
+                            "Output:",
+                            tool_result.output,
+                        ]
+                    )
                 )
             tool_msg = ToolMessage("\n\n".join(parts))
             response = self.respond(tool_msg)

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
-from typing import Any
 
 from agentic_runtime.distributed.contracts import AgentHeartbeat, AgentRegistration
 from agentic_runtime.distributed.registry import AgentSnapshot
 from agentic_runtime.distributed.serialization import deserialize_record, serialize_record
-from agentic_runtime.distributed.transport import ConsumedRecord, normalize_distributed_message
+from agentic_runtime.distributed.transport import (
+    ConsumedRecord,
+    MalformedRecord,
+    normalize_distributed_message,
+)
 from agentic_runtime.messaging.messages import Message
 
 
@@ -34,11 +36,17 @@ class InMemoryTransport:
         self._delivered: dict[str, dict[str, dict[str, set[str]]]] = {}
         # stream_name -> {group -> {entry_id -> delivery_time_ns}}
         self._delivery_times: dict[str, dict[str, dict[str, int]]] = {}
+        self._dead_letters: list[dict[str, object]] = []
         self._closed = False
 
     @property
     def prefix(self) -> str:
         return self._prefix
+
+    @property
+    def dead_letters(self) -> tuple[dict[str, object], ...]:
+        with self._lock:
+            return tuple(dict(item) for item in self._dead_letters)
 
     def message_stream(self, target: str) -> str:
         resolved_target = target.strip()
@@ -55,9 +63,7 @@ class InMemoryTransport:
         with self._condition:
             self._entry_counter += 1
             entry_id = f"{self._entry_counter}-0"
-            self._streams.setdefault(stream, []).append(
-                (entry_id, {"payload": serialized})
-            )
+            self._streams.setdefault(stream, []).append((entry_id, {"payload": serialized}))
             self._condition.notify_all()
             return entry_id
 
@@ -95,7 +101,7 @@ class InMemoryTransport:
                         ConsumedRecord(
                             stream=stream,
                             entry_id=entry_id,
-                            record=deserialize_record(serialized),
+                            record=self._deserialize_record(serialized),
                         )
                     )
                     if len(result) >= count:
@@ -152,7 +158,7 @@ class InMemoryTransport:
                         ConsumedRecord(
                             stream=stream,
                             entry_id=entry_id,
-                            record=deserialize_record(serialized),
+                            record=self._deserialize_record(serialized),
                         )
                     )
                     if len(result) >= count:
@@ -186,7 +192,7 @@ class InMemoryTransport:
             delivery_times = self._delivery_times[stream][group]
 
             pending_ids: list[str] = []
-            for other_consumer, delivered_ids in all_delivered.items():
+            for delivered_ids in all_delivered.values():
                 for entry_id in delivered_ids:
                     if entry_id in acked:
                         continue
@@ -200,7 +206,7 @@ class InMemoryTransport:
             result: list[ConsumedRecord] = []
             for entry_id in pending_ids[:count]:
                 # Transfer ownership to this consumer
-                for other_consumer, delivered_ids in all_delivered.items():
+                for delivered_ids in all_delivered.values():
                     delivered_ids.discard(entry_id)
                 all_delivered.setdefault(consumer, set()).add(entry_id)
                 delivery_times[entry_id] = now_ns
@@ -215,7 +221,7 @@ class InMemoryTransport:
                     ConsumedRecord(
                         stream=stream,
                         entry_id=entry_id,
-                        record=deserialize_record(serialized),
+                        record=self._deserialize_record(serialized),
                     )
                 )
             return result
@@ -230,6 +236,34 @@ class InMemoryTransport:
             acked.add(entry_id)
             return 1
 
+    def publish_dead_letter(
+        self,
+        *,
+        target: str,
+        source_stream: str,
+        group: str,
+        entry_id: str,
+        record: object,
+        error: str,
+        attempts: int,
+    ) -> str:
+        with self._lock:
+            self._entry_counter += 1
+            dead_letter_id = f"{self._entry_counter}-0"
+            self._dead_letters.append(
+                {
+                    "id": dead_letter_id,
+                    "target": target,
+                    "source_stream": source_stream,
+                    "group": group,
+                    "entry_id": entry_id,
+                    "record": record,
+                    "error": error,
+                    "attempts": attempts,
+                }
+            )
+            return dead_letter_id
+
     def close(self) -> None:
         self._closed = True
 
@@ -240,6 +274,17 @@ class InMemoryTransport:
             return int(parts[0])
         except ValueError:
             return 0
+
+    @staticmethod
+    def _deserialize_record(serialized: str) -> object:
+        try:
+            return deserialize_record(serialized)
+        except Exception as error:
+            return MalformedRecord(
+                raw_payload=serialized,
+                error_type=type(error).__name__,
+                error_message=str(error),
+            )
 
 
 class InMemoryServiceRegistry:

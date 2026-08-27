@@ -6,7 +6,7 @@ Deciders are pure routing logic: they decide WHAT happens, not HOW.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from agentic_runtime.messaging.messages import Message, UserMessage
 

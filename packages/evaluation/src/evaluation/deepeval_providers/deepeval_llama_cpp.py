@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from deepeval.models import LocalModel
 from pydantic import BaseModel
 
@@ -12,7 +10,7 @@ class FixedLlamaCppModel(LocalModel):
     async def a_generate(
         self,
         prompt: str,
-        schema: Optional[BaseModel] = None,
+        schema: BaseModel | None = None,
     ) -> str | BaseModel:
         result = await super().a_generate(prompt, schema)
         if isinstance(result, tuple):
@@ -22,7 +20,7 @@ class FixedLlamaCppModel(LocalModel):
     def generate(
         self,
         prompt: str,
-        schema: Optional[BaseModel] = None,
+        schema: BaseModel | None = None,
     ) -> str | BaseModel:
         result = super().generate(prompt, schema)
         if isinstance(result, tuple):

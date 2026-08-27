@@ -2,9 +2,9 @@ from threading import Lock
 from typing import ClassVar
 
 from providers._proto import ProviderProto
+from providers.mlx.memory import clear_mlx_cache
 from providers.models._models import VLModel
 from providers.models.config import ModelConfig
-from providers.mlx.memory import clear_mlx_cache
 
 
 class MlxVlmProvider(ProviderProto):

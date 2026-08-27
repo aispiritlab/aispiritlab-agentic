@@ -5,12 +5,11 @@ import json
 from agentic.core_agent import CoreAgentic
 from agentic.message import ToolMessage
 from agentic.metadata import Description
-from providers.models import ModelConfig
-from providers.orchestrator import ModelProviderType
-from agentic.tools import Toolset, Toolsets
-
 from agentic.specialized_agents._prompt_builders import build_specialized_prompt_builder
 from agentic.specialized_agents.events import TaskDelegated
+from agentic.tools import Toolset, Toolsets
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProviderType
 
 _PLANNER_SYSTEM_PROMPT_TEMPLATE = """You are a planner. Break the user request into steps and delegate each step to an agent.
 Available agents: {agent_names}
@@ -119,12 +118,14 @@ class PlannerAgent(CoreAgentic):
             for tool_result in response.tool_results:
                 tool_name, tool_args = tool_result.tool_call
                 parts.append(
-                    "\n".join([
-                        f"Tool: {tool_name}",
-                        f"Arguments: {json.dumps(tool_args, ensure_ascii=False)}",
-                        "Output:",
-                        tool_result.output,
-                    ])
+                    "\n".join(
+                        [
+                            f"Tool: {tool_name}",
+                            f"Arguments: {json.dumps(tool_args, ensure_ascii=False)}",
+                            "Output:",
+                            tool_result.output,
+                        ]
+                    )
                 )
             tool_msg = ToolMessage("\n\n".join(parts))
             response = self.respond(tool_msg)

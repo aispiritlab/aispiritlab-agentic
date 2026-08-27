@@ -1,10 +1,11 @@
-import sqlite3
 from pathlib import Path
+import sqlite3
 
 from agentic_runtime.fine_tuning import (
     export_agent_fine_tuning_rows,
     export_router_fine_tuning_rows,
 )
+from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
     ConversationData,
@@ -19,9 +20,8 @@ from agentic_runtime.messaging.messages import (
     TurnStarted,
     UserMessage,
 )
-from agentic_runtime.messaging.message_bus import InMemoryMessageBus
-from agentic_runtime.storage.sqlite_store import SQLiteMessageStore
 from agentic_runtime.messaging.streaming import build_assistant_messages, resolve_trace_context
+from agentic_runtime.storage.sqlite_store import SQLiteMessageStore
 
 
 def _user_message(
@@ -196,20 +196,20 @@ def test_fine_tuning_exports_keep_router_and_agent_rows_separate(tmp_path: Path)
         )
     )
     bus.publish(
-            ToolCallEvent(
-                data={"name": "add_note", "parameters": {"note_name": "Projekt"}},
-                metadata=RecordedMessageMetadata(
-                    runtime_id=runtime_id,
-                    turn_id=turn_id,
-                    message_id="tool-call-message",
-                    reply_to_message_id="user-1",
-                    domain="manage_notes",
-                    source="manage_notes",
-                    target="user",
-                    role="assistant",
-                    tool_call_id="call-1",
-                ),
-            )
+        ToolCallEvent(
+            data={"name": "add_note", "parameters": {"note_name": "Projekt"}},
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="tool-call-message",
+                reply_to_message_id="user-1",
+                domain="manage_notes",
+                source="manage_notes",
+                target="user",
+                role="assistant",
+                tool_call_id="call-1",
+            ),
+        )
     )
     bus.publish(
         ToolResultMessage(
@@ -377,36 +377,36 @@ def test_fine_tuning_export_skips_incomplete_chunked_turn(tmp_path: Path) -> Non
         )
     )
     bus.publish(
-            MessageStarted(
-                data={"logical_kind": "assistant_message", "chunk_count": 2},
-                metadata=RecordedMessageMetadata(
-                    runtime_id=runtime_id,
-                    turn_id=turn_id,
-                    message_id="assistant-1",
-                    reply_to_message_id="user-1",
-                    domain="manage_notes",
-                    source="manage_notes",
-                    target="user",
-                    scope="transport",
-                    role="assistant",
-                ),
-            )
+        MessageStarted(
+            data={"logical_kind": "assistant_message", "chunk_count": 2},
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="assistant-1",
+                reply_to_message_id="user-1",
+                domain="manage_notes",
+                source="manage_notes",
+                target="user",
+                scope="transport",
+                role="assistant",
+            ),
+        )
     )
     bus.publish(
-            MessageChunk(
-                data=ConversationData(role="assistant", text="Notatka "),
-                metadata=RecordedMessageMetadata(
-                    runtime_id=runtime_id,
-                    turn_id=turn_id,
-                    message_id="assistant-1",
-                    reply_to_message_id="user-1",
-                    domain="manage_notes",
-                    source="manage_notes",
-                    target="user",
-                    scope="transport",
-                    role="assistant",
-                    chunk_index=0,
-                    chunk_count=2,
+        MessageChunk(
+            data=ConversationData(role="assistant", text="Notatka "),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                message_id="assistant-1",
+                reply_to_message_id="user-1",
+                domain="manage_notes",
+                source="manage_notes",
+                target="user",
+                scope="transport",
+                role="assistant",
+                chunk_index=0,
+                chunk_count=2,
             ),
         )
     )

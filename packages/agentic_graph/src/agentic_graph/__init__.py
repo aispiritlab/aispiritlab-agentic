@@ -22,6 +22,8 @@ from agentic_graph.tab import build_agent_builder_tab
 
 def main() -> None:
     """Launch the Agentics Manager Gradio app."""
+    import gradio as gr
+
     from agentic_runtime.users import create_user, list_users
     from agentic_runtime.workspaces import (
         create_workspace,
@@ -30,7 +32,6 @@ def main() -> None:
     )
     from chat.styles import GLOBAL_CSS
     from chat.theme import SPIRIT_THEME
-    import gradio as gr
 
     def _user_choices() -> list[str]:
         return [u.name for u in list_users()]
@@ -78,7 +79,9 @@ def main() -> None:
                 scale=2,
                 min_width=120,
             )
-            new_user_input = gr.Textbox(label="New user", placeholder="Name", scale=2, min_width=100)
+            new_user_input = gr.Textbox(
+                label="New user", placeholder="Name", scale=2, min_width=100
+            )
             create_user_btn = gr.Button("Create", size="sm", scale=1)
             workspace_selector = gr.Dropdown(
                 label="Workspace",
@@ -87,7 +90,9 @@ def main() -> None:
                 scale=3,
                 min_width=160,
             )
-            new_ws_input = gr.Textbox(label="New workspace", placeholder="research-team", scale=2, min_width=120)
+            new_ws_input = gr.Textbox(
+                label="New workspace", placeholder="research-team", scale=2, min_width=120
+            )
             new_ws_btn = gr.Button("+ New", size="sm", variant="primary", scale=1)
 
         # ── View tabs ──
@@ -97,10 +102,12 @@ def main() -> None:
 
             with gr.Tab("Runner", id="tab-runner"):
                 from agentic_graph.runner_tab import build_runner_tab
+
                 build_runner_tab(preview_events_state=preview_events_state)
 
             with gr.Tab("Events", id="tab-events"):
                 from agentic_graph.events_tab import build_events_tab
+
                 build_events_tab(preview_events_state=preview_events_state)
 
         # ── Event wiring ──
@@ -126,16 +133,16 @@ def main() -> None:
 
 __all__ = [
     "AgenticGraphBuilder",
+    "GraphRuntime",
+    "RuntimeEventRecord",
+    "RuntimeExecutionResult",
+    "RuntimeOutput",
     "ValidationIssue",
     "build_agent_builder_tab",
     "generate_graph_summary",
     "generate_python_code",
-    "GraphRuntime",
     "main",
     "render_validation_report",
-    "RuntimeEventRecord",
-    "RuntimeExecutionResult",
-    "RuntimeOutput",
     "run_graph_runtime",
     "validate_graph",
 ]

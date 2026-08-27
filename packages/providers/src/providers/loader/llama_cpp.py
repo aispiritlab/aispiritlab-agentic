@@ -42,9 +42,7 @@ class LlamaCppLoader:
         key = (platform.os, platform.arch)
         pattern = _ASSET_PATTERNS.get(key)
         if pattern is None:
-            raise RuntimeError(
-                f"No llama.cpp binary available for {platform.os}/{platform.arch}"
-            )
+            raise RuntimeError(f"No llama.cpp binary available for {platform.os}/{platform.arch}")
         return pattern
 
     def _find_server_binary(self, extract_dir: Path) -> Path:
@@ -54,9 +52,7 @@ class LlamaCppLoader:
         for path in extract_dir.rglob("*"):
             if path.is_file() and path.name == f"{_SERVER_BINARY}.exe":
                 return path
-        raise FileNotFoundError(
-            f"Could not find {_SERVER_BINARY} binary in extracted files"
-        )
+        raise FileNotFoundError(f"Could not find {_SERVER_BINARY} binary in extracted files")
 
     def download(
         self,

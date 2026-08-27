@@ -40,9 +40,7 @@ def _get_scenarios():
     return [s for s in NOTES_TOOL_SCENARIOS if s.name in _SCENARIO_NAMES]
 
 
-@pytest.mark.parametrize(
-    "scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES
-)
+@pytest.mark.parametrize("scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES)
 def test_manage_notes_e2e(notes_callback, scenario_name):
     from personal_assistant.agents.manage_notes.evaluation import NOTES_TOOL_SCENARIOS
 

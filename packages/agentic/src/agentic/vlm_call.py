@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import cast
 
+from agentic.observability import LLMTracer, NoopLLMTracer
 from providers.models import ModelConfig
 from providers.models.response import ModelResponse
 from providers.orchestrator import ModelProvider
-from agentic.observability import LLMTracer, NoopLLMTracer
 
 _DEFAULT_SYSTEM_PROMPT = "Jesteś pomocnym asystentem AI. Odpowiadaj po polsku."
 

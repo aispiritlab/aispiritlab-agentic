@@ -30,7 +30,9 @@ class PromptBuilder(Protocol):
 class CorePromptBuilder:
     """Base class for prompt builders with shared functionality."""
 
-    def __init__(self, *, system_prompt: str | None = None, external_prompt_name: str | None = None) -> None:
+    def __init__(
+        self, *, system_prompt: str | None = None, external_prompt_name: str | None = None
+    ) -> None:
         if system_prompt is not None:
             self._system_prompt = system_prompt
         elif external_prompt_name is not None:

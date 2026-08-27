@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass, field
 import hashlib
-from typing import Any, AsyncGenerator, Callable, Sequence
+import threading
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -12,11 +14,9 @@ from agentic.capabilities import AbstractCapability, CombinedCapability, HookCon
 from agentic.exceptions import DEFAULT_RETRY, ModelRetry, RetryPolicy
 from agentic.history import History
 from agentic.memory import InMemory, Memory
-from agentic.message import Message, SystemMessage, UserMessage
-from providers.models.response import ModelResponse
-from providers.orchestrator import ModelProvider
+from agentic.message import AssistantMessage, Message, SystemMessage, UserMessage
 from agentic.observability import LLMTracer, NoopLLMTracer, TraceSnapshot
-from agentic.prompts import PromptBuilder as PromptBuilder
+from agentic.prompts import PromptBuilder
 from agentic.response_parser import ResponseParser
 from agentic.structured_output import StructuredOutput
 from agentic.tools import (
@@ -30,6 +30,8 @@ from agentic.tools import (
     build_chat_tools,
 )
 from agentic.usage import UNLIMITED, RequestUsage, RunUsage, UsageLimits
+from providers.models.response import ModelResponse
+from providers.orchestrator import ModelProvider
 
 logger = structlog.get_logger(__name__)
 
@@ -98,18 +100,24 @@ class AgentResult:
         prompt_snapshot: PromptSnapshot | None = None,
         attempt_no: int | None = None,
         loop_iteration: int | None = None,
+        model_provider: str = "",
+        generation_config_hash: str = "",
     ) -> None:
         self.content = content
         self.reasoning = reasoning
         self.tool_calls: list[ToolCall] = tool_calls or []
         self.usage = usage or {}
         self.request_usage = request_usage or RequestUsage()
-        self.response_text = response_text if response_text is not None else _stringify_content(content)
+        self.response_text = (
+            response_text if response_text is not None else _stringify_content(content)
+        )
         self.trace = trace
         self.run_id = run_id
         self.prompt_snapshot = prompt_snapshot
         self.attempt_no = attempt_no
         self.loop_iteration = loop_iteration
+        self.model_provider = model_provider
+        self.generation_config_hash = generation_config_hash
 
     @property
     def content_text(self) -> str:
@@ -226,6 +234,19 @@ class Agent:
         self._run_usage = RunUsage()
         self._retry_policy = retry_policy
         self._capability = CombinedCapability(capabilities) if capabilities else None
+        # An agent owns conversation history and usage counters, so a turn has to
+        # be atomic. Re-entrant because a turn may call back into run() (tool retries).
+        self._turn_lock = threading.RLock()
+
+    @property
+    def turn_lock(self) -> threading.RLock:
+        """Serialises turns on this agent.
+
+        Callers that need several agent operations to happen as one turn — for
+        example ``clear_history()`` immediately followed by ``run()`` — must hold
+        this for the whole sequence.
+        """
+        return self._turn_lock
 
     @property
     def history(self) -> History:
@@ -306,15 +327,18 @@ class Agent:
         current_message: str | Message | None = None,
         hook_context: HookContext | None = None,
     ) -> PromptArtifacts:
-        # TODO: Inject prompt_context.memory_context once memory summaries are part
-        # of the end-to-end prompt contract. For now prompts intentionally include
-        # only conversation history and the active user turn.
         rendered_input_turn = self._render_input_turn(
             prompt_context.message if current_message is None else current_message
+        )
+        memory_turn = (
+            SystemMessage(f"Remembered context:\n{prompt_context.memory_context}").as_turn()
+            if prompt_context.memory_context
+            else ""
         )
         message_with_history = "\n".join(
             turn
             for turn in [
+                memory_turn,
                 prompt_context.history_text,
                 rendered_input_turn,
             ]
@@ -343,9 +367,7 @@ class Agent:
                 if callable(get_load_error):
                     load_error = get_load_error("model")
                 if load_error:
-                    raise RuntimeError(
-                        f"Model is not available for inference: {load_error}"
-                    )
+                    raise RuntimeError(f"Model is not available for inference: {load_error}")
                 raise RuntimeError("Model is not available for inference.")
             return model.response(prompt, **kwargs)
 
@@ -387,6 +409,7 @@ class Agent:
         run_id: str,
         prompt_artifacts: PromptArtifacts,
         trace: TraceSnapshot | None,
+        generation_config_hash: str,
     ) -> AgentResult:
         parsed = self._response_parser.parse(model_response.text)
         req_usage = self._request_usage_from_response(model_response)
@@ -412,6 +435,8 @@ class Agent:
                 prompt_hash=prompt_artifacts.prompt_hash,
                 tool_schema=list(prompt_artifacts.tool_schema),
             ),
+            model_provider=str(getattr(self._model_provider, "_model_provider_type", "")),
+            generation_config_hash=generation_config_hash,
         )
 
     def _store_history(self, message: str | Message, response_content: str) -> None:
@@ -419,7 +444,7 @@ class Agent:
             self._history.add(message)
         else:
             self._history.add(UserMessage(message))
-        self._history.add(SystemMessage(response_content))
+        self._history.add(AssistantMessage(response_content))
 
     @property
     def run_usage(self) -> RunUsage:
@@ -463,6 +488,16 @@ class Agent:
         ctx: Context | None = None,
         *,
         images: str | list[str] | None = None,
+    ) -> AgentResult:
+        with self._turn_lock:
+            return self._run_locked(message, ctx, images=images)
+
+    def _run_locked(
+        self,
+        message: str | Message,
+        ctx: Context | None,
+        *,
+        images: str | list[str] | None,
     ) -> AgentResult:
         current_context = ctx or self._context
         message_text = str(message)
@@ -527,7 +562,9 @@ class Agent:
                                 else {}
                             ),
                         },
-                        invoke=lambda: self._call_model(prompt_artifacts.prompt, **model_kwargs),
+                        invoke=lambda artifacts=prompt_artifacts: self._call_model(
+                            artifacts.prompt, **model_kwargs
+                        ),
                     )
 
                     if self._capability is not None:
@@ -552,6 +589,9 @@ class Agent:
                             run_id=run_id,
                             prompt_artifacts=prompt_artifacts,
                             trace=self._tracer.current_trace,
+                            generation_config_hash=hashlib.sha256(
+                                repr(sorted(model_kwargs.items())).encode("utf-8")
+                            ).hexdigest(),
                         )
                     except ModelRetry as error:
                         if self._capability is not None:
@@ -571,16 +611,18 @@ class Agent:
                         self._run_usage.add_tool_calls(len(result.tool_calls))
                     self._usage_limits.check_after_request(self._run_usage)
 
-                    span.update(output={
-                        "content": result.content_text[:200],
-                        "usage.requests": self._run_usage.requests,
-                        "usage.input_tokens": self._run_usage.input_tokens,
-                        "usage.output_tokens": self._run_usage.output_tokens,
-                        "usage.total_tokens": self._run_usage.total_tokens,
-                        "usage.tool_calls": self._run_usage.tool_calls,
-                        "usage.latency_ms": self._run_usage.total_latency_ms,
-                        "usage.retry_attempts": attempt,
-                    })
+                    span.update(
+                        output={
+                            "content": result.content_text[:200],
+                            "usage.requests": self._run_usage.requests,
+                            "usage.input_tokens": self._run_usage.input_tokens,
+                            "usage.output_tokens": self._run_usage.output_tokens,
+                            "usage.total_tokens": self._run_usage.total_tokens,
+                            "usage.tool_calls": self._run_usage.tool_calls,
+                            "usage.latency_ms": self._run_usage.total_latency_ms,
+                            "usage.retry_attempts": attempt,
+                        }
+                    )
                     self._store_history(message, result.content_text)
                     return result
             except Exception as error:
@@ -595,9 +637,10 @@ class Agent:
         self,
         message: str | Message,
         ctx: Context | None = None,
-    ) -> AsyncGenerator[dict[str, str | AgentResult], None]:
+    ) -> AsyncGenerator[dict[str, str | AgentResult]]:
         result = await self.arun(message, ctx)
         yield {"type": "result", "result": result}
 
     def clear_history(self) -> None:
-        self._history.clear()
+        with self._turn_lock:
+            self._history.clear()

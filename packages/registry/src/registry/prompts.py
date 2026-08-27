@@ -1,4 +1,5 @@
 """Prompts registry for all agentic system agents."""
+
 from enum import StrEnum
 
 import mlflow
@@ -14,6 +15,7 @@ class Prompts(StrEnum):
     ORGANIZER = "organizer"
     DECISION = "decision"
     CHAT = "chat"
+
 
 # =============================================================================
 # Personalization Agent Prompts
@@ -241,6 +243,7 @@ Odpowiedź musi być dokładnie jednym słowem: manage_notes, personalize, disco
 # =============================================================================
 # Prompt Management
 # =============================================================================
+
 
 def get_prompt(name: str) -> str:
     """Load a prompt from the MLflow registry.

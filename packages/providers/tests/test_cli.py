@@ -59,7 +59,9 @@ class TestCliStatus:
         output = capsys.readouterr().out
         assert "No running server" in output
 
-    def test_status_with_stale_pid(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    def test_status_with_stale_pid(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
         pid_dir = tmp_path / "llama-cpp"
         pid_dir.mkdir()
         (pid_dir / "llama-server.pid").write_text("999999")

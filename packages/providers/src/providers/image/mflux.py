@@ -42,8 +42,10 @@ class MfluxImageCall:
         self._width = width
         self._height = height
         self._steps = steps
-        self._output_dir = Path(output_dir) if output_dir is not None else (
-            Path(tempfile.gettempdir()) / "aispiritagent-generated-images"
+        self._output_dir = (
+            Path(output_dir)
+            if output_dir is not None
+            else (Path(tempfile.gettempdir()) / "aispiritagent-generated-images")
         )
         self._load_lock = Lock()
         self._inference_lock = Lock()

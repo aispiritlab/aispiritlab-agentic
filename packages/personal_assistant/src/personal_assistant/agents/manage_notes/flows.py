@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from evaluation import Flow, Flows
 
-
 DEFAULT_NOTE_FLOWS = Flows(
     Flow(
         name="flow::zakupy_add_read_edit_read_list",

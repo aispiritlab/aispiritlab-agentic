@@ -2,6 +2,7 @@
 
 Decides HOW a command is executed (which Reactor handles it).
 """
+
 from __future__ import annotations
 
 from agentic.workflow.messages import Message, UserMessage

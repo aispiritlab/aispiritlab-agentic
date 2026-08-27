@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import importlib
 import json
 import os
 import re
-from contextlib import contextmanager
-from typing import Any
+from typing import Any, ClassVar
 
-import pytest
 from deepeval.metrics import StepEfficiencyMetric, ToolCorrectnessMetric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase, ToolCall, ToolCallParams
+import pytest
 
 import agentic.prompts as agentic_prompts
 from personal_assistant.agents.manage_notes.evaluation import NOTES_TOOL_SCENARIOS
@@ -42,7 +42,7 @@ def _extract_trace_from_efficiency_prompt(prompt: str) -> dict[str, Any]:
     if start < 0:
         return {}
 
-    trace_text = prompt[start + len(marker):]
+    trace_text = prompt[start + len(marker) :]
     if "JSON:" in trace_text:
         trace_text = trace_text.split("JSON:", maxsplit=1)[0]
     trace_text = trace_text.strip()
@@ -57,9 +57,8 @@ def _extract_trace_from_efficiency_prompt(prompt: str) -> dict[str, Any]:
 
 
 class _DeterministicNotesModel:
-    _routes = {
-        scenario.user_message_pl: scenario.expected_tool_call
-        for scenario in NOTES_TOOL_SCENARIOS
+    _routes: ClassVar[dict[str, str]] = {
+        scenario.user_message_pl: scenario.expected_tool_call for scenario in NOTES_TOOL_SCENARIOS
     }
 
     def response(self, prompt: str) -> str:
@@ -73,7 +72,7 @@ class _DeterministicNotesModel:
 
 
 class _DeterministicEvalJudge(DeepEvalBaseLLM):
-    def load_model(self) -> "_DeterministicEvalJudge":
+    def load_model(self) -> _DeterministicEvalJudge:
         return self
 
     def generate(self, prompt: str, schema=None) -> Any:
@@ -146,7 +145,7 @@ def notes_manager(monkeypatch, tmp_path):
     fake_model = _DeterministicNotesModel()
 
     @contextmanager
-    def fake_session(name: str = "model"):  # noqa: ARG001
+    def fake_session(name: str = "model"):
         yield fake_model
 
     monkeypatch.setattr(

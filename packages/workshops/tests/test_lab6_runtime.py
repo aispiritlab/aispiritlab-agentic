@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 from agentic.integrations.search_provider import SearchResult
-from agentic.workflow.messages import ConversationData, RecordedMessageMetadata
+from agentic.workflow.messages import (
+    ConversationData,
+    RecordedMessageMetadata,
+    normalize_recorded_message,
+)
 from agentic_runtime.distributed.registry import AgentSnapshot
 from agentic_runtime.messaging.messages import AssistantMessage, TurnCompleted, UserMessage
-from workshops.lab6.messages import SearchPlanned, SummaryRequested
+from workshops.lab6.messages import (
+    SearchPlanned,
+    SearchRequested,
+    SearchResultsFetched,
+    SummaryRequested,
+)
 from workshops.lab6.runtime import (
     PlannerHandler,
     SearchHandler,
@@ -52,7 +61,9 @@ class _SearchProviderStub:
         del count
         return [
             SearchResult(title=f"Result for {query}", url="https://example.com/a", snippet="A"),
-            SearchResult(title=f"Duplicate for {query}", url="https://example.com/a", snippet="A2"),
+            SearchResult(
+                title=f"Duplicate for {query}", url="https://example.com/a", snippet="A2"
+            ),
             SearchResult(title=f"Second for {query}", url="https://example.com/b", snippet="B"),
         ]
 
@@ -61,14 +72,14 @@ class _SearchProviderStub:
 
 
 class _SummaryStub:
-    def summarize(self, question: str, results) -> str:  # noqa: ANN001
+    def summarize(self, question: str, results) -> str:
         return f"summary:{question}:{len(results)}"
 
     def close(self) -> None:
         return None
 
 
-def test_planner_handler_emits_search_planned_for_live_search_agent() -> None:
+def test_planner_handler_records_plan_and_emits_search_command() -> None:
     handler = PlannerHandler(planner=_PlannerStub())
     message = UserMessage(
         data=ConversationData(role="user", text="Redis 8.6"),
@@ -82,17 +93,21 @@ def test_planner_handler_emits_search_planned_for_live_search_agent() -> None:
 
     responses = handler(message, _FakeDiscovery({"web-search": "search"}))
 
-    assert len(responses) == 1
+    assert len(responses) == 2
     planned = responses[0]
     assert isinstance(planned, SearchPlanned)
-    assert planned.metadata.target == "search"
+    assert planned.metadata.target is None
+    assert normalize_recorded_message(planned).metadata.contract_name == "lab6.search-planned"
     assert planned.reply_target == "chat"
     assert planned.queries == ("Redis 8.6 latest", "Redis 8.6 docs")
+    requested = responses[1]
+    assert isinstance(requested, SearchRequested)
+    assert requested.metadata.target == "search"
 
 
 def test_search_handler_emits_summary_request_with_deduplicated_results() -> None:
     handler = SearchHandler(search_provider=_SearchProviderStub(), results_per_query=5)
-    message = SearchPlanned(
+    message = SearchRequested(
         question="Redis 8.6",
         queries=("redis 8.6", "redis 8.6 release"),
         reply_target="chat",
@@ -107,8 +122,11 @@ def test_search_handler_emits_summary_request_with_deduplicated_results() -> Non
 
     responses = handler(message, _FakeDiscovery({"summarize": "summary"}))
 
-    assert len(responses) == 1
-    summary_request = responses[0]
+    assert len(responses) == 2
+    fetched = responses[0]
+    assert isinstance(fetched, SearchResultsFetched)
+    assert fetched.metadata.target is None
+    summary_request = responses[1]
     assert isinstance(summary_request, SummaryRequested)
     assert summary_request.metadata.target == "summary"
     assert summary_request.reply_target == "chat"

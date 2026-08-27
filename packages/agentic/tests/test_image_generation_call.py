@@ -14,7 +14,7 @@ def test_mflux_image_call_generates_file_and_metadata(monkeypatch, tmp_path: Pat
             saved_paths.append(saved_path)
 
     class FakeModel:
-        def generate_image(self, **kwargs) -> FakeImage:  # noqa: ANN003
+        def generate_image(self, **kwargs) -> FakeImage:
             assert kwargs["prompt"] == "Stwórz obraz ptaka"
             assert kwargs["seed"] == 123
             assert kwargs["width"] == 640
@@ -72,7 +72,9 @@ def test_mflux_image_call_reports_missing_dependency(monkeypatch, tmp_path: Path
         raise AssertionError("Expected RuntimeError when the MFLUX dependency is unavailable")
 
 
-def test_mflux_image_call_close_is_idempotent_and_reloads_model(monkeypatch, tmp_path: Path) -> None:
+def test_mflux_image_call_close_is_idempotent_and_reloads_model(
+    monkeypatch, tmp_path: Path
+) -> None:
     build_calls: list[str] = []
     cache_clear_calls: list[str] = []
 
@@ -84,7 +86,7 @@ def test_mflux_image_call_close_is_idempotent_and_reloads_model(monkeypatch, tmp
         def __init__(self, label: str) -> None:
             self._label = label
 
-        def generate_image(self, **kwargs) -> FakeImage:  # noqa: ANN003
+        def generate_image(self, **kwargs) -> FakeImage:
             assert kwargs["prompt"] == "ptak"
             return FakeImage()
 

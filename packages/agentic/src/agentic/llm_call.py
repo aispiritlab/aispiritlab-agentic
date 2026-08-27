@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agentic.core_agent import CoreAgentResponse, CoreAgentic
+from agentic.core_agent import CoreAgentic, CoreAgentResponse
 from agentic.observability import LLMTracer
 from agentic.prompts import ChatPromptBuilder
 from providers.models.config import ModelConfig
@@ -30,7 +30,8 @@ class LLMCall:
         model_provider_type: ModelProviderType = "openai",
     ) -> None:
         prompt_builder = ChatPromptBuilder(
-            system_prompt=system_prompt or (None if external_prompt_name else _DEFAULT_SYSTEM_PROMPT),
+            system_prompt=system_prompt
+            or (None if external_prompt_name else _DEFAULT_SYSTEM_PROMPT),
             external_prompt_name=external_prompt_name,
         )
         self._agent = CoreAgentic(

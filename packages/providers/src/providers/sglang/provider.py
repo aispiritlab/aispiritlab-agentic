@@ -84,7 +84,5 @@ class SGLangProvider(ProviderProto):
                     close()
 
     @classmethod
-    def load(
-        cls, model_name: str, config: ModelConfig
-    ) -> SglangNativeModel | SglangOpenAIModel:
+    def load(cls, model_name: str, config: ModelConfig) -> SglangNativeModel | SglangOpenAIModel:
         return cls.build_model(cls.load_backend(model_name), model_name, config)

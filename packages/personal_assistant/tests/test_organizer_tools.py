@@ -4,8 +4,8 @@ import subprocess
 import orjson
 
 from personal_assistant.agents.manage_notes import tools as note_tools
-from personal_assistant.messaging.events import CreatedNote
 from personal_assistant.agents.organizer import tools as organizer_tools
+from personal_assistant.messaging.events import CreatedNote
 
 
 def _set_personalization_file(
@@ -35,13 +35,7 @@ def test_tag_note_adds_frontmatter_tag_to_filesystem_note(monkeypatch, tmp_path:
     result = organizer_tools.tag_note("Projekt", "para/project")
 
     assert result == "Notatka Projekt otagowana jako para/project."
-    assert note.read_text(encoding="utf-8") == (
-        "---\n"
-        "tags:\n"
-        "- para/project\n"
-        "---\n"
-        "Plan sprintu"
-    )
+    assert note.read_text(encoding="utf-8") == ("---\ntags:\n- para/project\n---\nPlan sprintu")
 
 
 def test_tag_note_merges_existing_tags_without_duplicates(monkeypatch, tmp_path: Path) -> None:
@@ -49,12 +43,7 @@ def test_tag_note_merges_existing_tags_without_duplicates(monkeypatch, tmp_path:
     vault.mkdir()
     note = vault / "Zdrowie.md"
     note.write_text(
-        "---\n"
-        "status: active\n"
-        "tags:\n"
-        "- para/area\n"
-        "---\n"
-        "Badania kontrolne",
+        "---\nstatus: active\ntags:\n- para/area\n---\nBadania kontrolne",
         encoding="utf-8",
     )
     _set_personalization_file(tmp_path, monkeypatch, vault_path=vault)
@@ -69,7 +58,7 @@ def test_tag_note_uses_obsidian_cli_tags_and_overwrite(monkeypatch, tmp_path: Pa
     _set_personalization_file(tmp_path, monkeypatch, vault_name="MyVault")
     calls: list[list[str]] = []
 
-    def fake_run(args, check, capture_output, text):  # noqa: ANN001
+    def fake_run(args, check, capture_output, text):
         assert check is False
         assert capture_output is True
         assert text is True
@@ -110,8 +99,8 @@ def test_tag_note_uses_obsidian_cli_tags_and_overwrite(monkeypatch, tmp_path: Pa
 
 
 def test_organizer_decider_formats_created_note_as_user_message() -> None:
-    from personal_assistant.deciders import make_organizer_decider
     from agentic_runtime.messaging.messages import UserMessage
+    from personal_assistant.deciders import make_organizer_decider
 
     decider = make_organizer_decider()
     result = decider(

@@ -48,6 +48,16 @@ class ConcurrencyConflictError(AgenticError):
         )
 
 
+class DuplicateMessageError(AgenticError):
+    """A message or event identity was already recorded (409)."""
+
+    error_code: int = 409
+
+    def __init__(self, stream_name: str) -> None:
+        self.stream_name = stream_name
+        super().__init__(f"Duplicate message identity on stream '{stream_name}'")
+
+
 class StepLimitExceeded(AgenticError):
     """Consumer reached maximum processing steps (429)."""
 

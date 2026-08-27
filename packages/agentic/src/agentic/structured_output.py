@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import dataclasses
 import json
-import re
-from typing import Any, Callable, get_type_hints
+from typing import Any, get_type_hints
 
 import structlog
 
@@ -79,7 +79,7 @@ class StructuredOutput:
             return True
         # Check if response looks like JSON
         stripped = _extract_json(response)
-        return stripped.startswith("{") or stripped.startswith("[")
+        return stripped.startswith(("{", "["))
 
     def parse(self, response: str) -> Any:
         """Parse and validate the response.
@@ -151,9 +151,7 @@ class StructuredOutput:
         try:
             return self._output_type(**kwargs)
         except (TypeError, ValueError) as e:
-            raise ModelRetry(
-                f"Failed to construct {self._output_type.__name__}: {e}"
-            ) from e
+            raise ModelRetry(f"Failed to construct {self._output_type.__name__}: {e}") from e
 
     def json_schema(self) -> dict[str, Any] | None:
         """Generate a JSON schema for the output type (for prompt injection)."""

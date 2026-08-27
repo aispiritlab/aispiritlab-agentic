@@ -3,18 +3,22 @@
 Each router takes a Message from the stream and returns commands/events to append.
 Routers are pure workflow logic: they decide WHAT happens, not HOW.
 """
+
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 from structlog import get_logger
 
 from agentic.prompts import PromptTemplate
-from agentic.tools import Command, Toolsets
-
-from agentic.workflow.messages import ConversationData, Message, RecordedMessageMetadata, UserMessage
+from agentic.tools import Command, ToolRunResult, Toolsets
+from agentic.workflow.messages import (
+    ConversationData,
+    Message,
+    RecordedMessageMetadata,
+    UserMessage,
+)
 from agentic_runtime.reactor import LLMResponse, MessageRouter
-
 from personal_assistant.messaging.events import CreatedNote, NoteUpdated
 
 logger = get_logger(__name__)
@@ -82,6 +86,33 @@ def build_note_events(
             return ()
 
 
+def build_successful_note_tool_events(
+    response: LLMResponse,
+    *,
+    toolsets: Toolsets,
+    resolve_note_path: Callable[[str], str],
+    agent_name: str,
+) -> tuple[Message, ...]:
+    """Emit facts only for tool calls that actually completed successfully."""
+    emitted: list[Message] = []
+    for result in response._tool_results:
+        if not isinstance(result, ToolRunResult) or not result.success:
+            continue
+        command = toolsets.parse_tool(result.tool_call)
+        if command is None:
+            logger.warning("failed_to_parse_executed_tool_call", tool_call=result.tool_call)
+            continue
+        emitted.extend(
+            build_note_events(
+                command,
+                resolve_note_path=resolve_note_path,
+                agent_name=agent_name,
+                metadata=response.metadata,
+            )
+        )
+    return tuple(emitted)
+
+
 def passthrough_decider(msg: Message) -> Sequence[Message]:
     """Simplest message router: UserMessage passes through to LLM, everything else terminates.
 
@@ -107,19 +138,15 @@ def make_manage_notes_decider(
         if isinstance(msg, UserMessage):
             return [msg]
 
-        if isinstance(msg, LLMResponse) and msg.has_tool_calls:
-            tool_call = msg.tool_calls[0]
-            command = toolsets.parse_tool(tool_call)
-            if command is None:
-                logger.warning("failed_to_parse_tool_call", tool_call=tool_call)
-                return []
-
-            return list(build_note_events(
-                command,
-                resolve_note_path=resolve_note_path,
-                agent_name=agent_name,
-                metadata=msg.metadata,
-            ))
+        if isinstance(msg, LLMResponse):
+            return list(
+                build_successful_note_tool_events(
+                    msg,
+                    toolsets=toolsets,
+                    resolve_note_path=resolve_note_path,
+                    agent_name=agent_name,
+                )
+            )
 
         return []
 
@@ -136,11 +163,7 @@ def make_organizer_decider() -> MessageRouter:
     def decider(msg: Message) -> Sequence[Message]:
         if isinstance(msg, CreatedNote):
             payload = PromptTemplate(
-                template=(
-                    "Nazwa notatki: {note_name}\n"
-                    "Treść notatki:\n"
-                    "{note_content}\n"
-                ),
+                template=("Nazwa notatki: {note_name}\nTreść notatki:\n{note_content}\n"),
                 context_variables=["note_name", "note_content"],
             ).format(
                 note_name=msg.note_name,

@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pprint import pformat
 from typing import Literal
 
-from agentic_graph.compiler import _normalize_text, _sanitize_alias as _slugify, compile_graph
+from agentic_graph.compiler import _normalize_text, compile_graph
+from agentic_graph.compiler import _sanitize_alias as _slugify
 from agentic_graph.models import AgentGraph, AgentNode, Connection
 from agentic_graph.registry import BlockSpec, get_block_by_name
 from agentic_graph.serialization import graph_to_dict
@@ -224,7 +225,9 @@ class AgenticGraphBuilder:
             config_map = dict(node.config)
 
             if node.agent_name in _LLM_AGENT_NAMES:
-                providers = [neighbor for neighbor in neighbors if neighbor.node_type == "provider"]
+                providers = [
+                    neighbor for neighbor in neighbors if neighbor.node_type == "provider"
+                ]
                 if len(providers) == 0:
                     issues.append(
                         ValidationIssue(
@@ -243,7 +246,9 @@ class AgenticGraphBuilder:
 
             if node.agent_name == "searcher":
                 search_integrations = [
-                    neighbor for neighbor in neighbors if neighbor.agent_name in _SEARCH_PROVIDER_NAMES
+                    neighbor
+                    for neighbor in neighbors
+                    if neighbor.agent_name in _SEARCH_PROVIDER_NAMES
                 ]
                 knowledge_bases = [
                     neighbor for neighbor in neighbors if neighbor.agent_name == "knowledge_base"
@@ -276,7 +281,9 @@ class AgenticGraphBuilder:
             if node.node_type == "provider":
                 config_provider = _normalize_text(config_map.get("provider_type", "")).strip()
                 config_model = _normalize_text(config_map.get("model_id", "")).strip()
-                connected_agents = [neighbor for neighbor in neighbors if neighbor.node_type == "agent"]
+                connected_agents = [
+                    neighbor for neighbor in neighbors if neighbor.node_type == "agent"
+                ]
                 if not config_provider:
                     issues.append(
                         ValidationIssue(
@@ -300,7 +307,9 @@ class AgenticGraphBuilder:
                     )
 
             if node.agent_name in _SEARCH_PROVIDER_NAMES:
-                connected_searchers = [neighbor for neighbor in neighbors if neighbor.agent_name == "searcher"]
+                connected_searchers = [
+                    neighbor for neighbor in neighbors if neighbor.agent_name == "searcher"
+                ]
                 if connected_searchers and not (
                     self._integration_api_key_env(node) or self._runtime_secret(node.node_id)
                 ):
@@ -335,7 +344,10 @@ class AgenticGraphBuilder:
                     if self._node(conn.target_node_id) is not None
                     and self._node(conn.target_node_id).node_type == "agent"
                 ]
-                dispatch_mode = _normalize_text(config_map.get("dispatch_mode", "broadcast")).strip() or "broadcast"
+                dispatch_mode = (
+                    _normalize_text(config_map.get("dispatch_mode", "broadcast")).strip()
+                    or "broadcast"
+                )
                 if dispatch_mode not in {"broadcast", "route_one"}:
                     issues.append(
                         ValidationIssue(
@@ -344,7 +356,9 @@ class AgenticGraphBuilder:
                             f"'{dispatch_mode}'. Use 'broadcast' or 'route_one'.",
                         )
                     )
-                if node.agent_name == "summarizer" and not self._incoming_connections(node.node_id):
+                if node.agent_name == "summarizer" and not self._incoming_connections(
+                    node.node_id
+                ):
                     issues.append(
                         ValidationIssue(
                             "warning",
@@ -415,7 +429,9 @@ class AgenticGraphBuilder:
         for node in self._graph.nodes:
             if node.agent_name in _SEARCH_PROVIDER_NAMES:
                 connected_searchers = [
-                    neighbor for neighbor in self._connected_nodes(node.node_id) if neighbor.agent_name == "searcher"
+                    neighbor
+                    for neighbor in self._connected_nodes(node.node_id)
+                    if neighbor.agent_name == "searcher"
                 ]
                 if connected_searchers and not self._integration_api_key_env(node):
                     raise ValueError(
@@ -447,7 +463,7 @@ class AgenticGraphBuilder:
             "",
             "",
             "def build_system() -> dict[str, object]:",
-            f"    \"\"\"Build the '{self._graph.name}' system from the saved graph.\"\"\"",
+            f'    """Build the \'{self._graph.name}\' system from the saved graph."""',
             "    settings = Settings()",
             "    graph = graph_from_dict(GRAPH_DATA)",
             "    compiled = compile_graph(graph)",
@@ -471,9 +487,7 @@ def render_validation_report(issues: tuple[ValidationIssue, ...] | list[Validati
     issue_list = list(issues)
     if not issue_list:
         return "- No validation issues."
-    return "\n".join(
-        f"- {issue.level.upper()}: {issue.message}" for issue in issue_list
-    )
+    return "\n".join(f"- {issue.level.upper()}: {issue.message}" for issue in issue_list)
 
 
 def validate_graph(graph: AgentGraph) -> tuple[ValidationIssue, ...]:

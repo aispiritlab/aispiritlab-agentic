@@ -6,8 +6,12 @@ from typing import Any
 from agentic.workflow.messages import Event, Message, RecordedMessageMetadata
 
 
-def _metadata_with_updates(metadata: RecordedMessageMetadata, **updates: Any) -> RecordedMessageMetadata:
-    values = {field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)}
+def _metadata_with_updates(
+    metadata: RecordedMessageMetadata, **updates: Any
+) -> RecordedMessageMetadata:
+    values = {
+        field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)
+    }
     values.update(updates)
     return RecordedMessageMetadata(**values)
 
@@ -27,15 +31,26 @@ class TaskDelegated(Event):
         super().__init__(
             kind="task_delegated",
             type="task_delegated",
-            data=data or {
+            data=data
+            or {
                 "target_agent": target_agent,
                 "task_description": task_description,
             },
             metadata=metadata or RecordedMessageMetadata(),
         )
 
+    @property
+    def target_agent(self) -> str:
+        return str(self.data.get("target_agent", ""))
+
+    @property
+    def task_description(self) -> str:
+        return str(self.data.get("task_description", ""))
+
     def with_metadata(self, **updates: Any) -> Message:
-        return TaskDelegated(data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates))
+        return TaskDelegated(
+            data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates)
+        )
 
     def with_data(self, **updates: Any) -> Message:
         return TaskDelegated(data={**self.data, **updates}, metadata=self.metadata)
@@ -57,7 +72,8 @@ class TaskCompleted(Event):
         super().__init__(
             kind="task_completed",
             type="task_completed",
-            data=data or {
+            data=data
+            or {
                 "target_agent": target_agent,
                 "task_description": task_description,
                 "result": result,
@@ -65,8 +81,22 @@ class TaskCompleted(Event):
             metadata=metadata or RecordedMessageMetadata(),
         )
 
+    @property
+    def target_agent(self) -> str:
+        return str(self.data.get("target_agent", ""))
+
+    @property
+    def task_description(self) -> str:
+        return str(self.data.get("task_description", ""))
+
+    @property
+    def result(self) -> str:
+        return str(self.data.get("result", ""))
+
     def with_metadata(self, **updates: Any) -> Message:
-        return TaskCompleted(data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates))
+        return TaskCompleted(
+            data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates)
+        )
 
     def with_data(self, **updates: Any) -> Message:
         return TaskCompleted(data={**self.data, **updates}, metadata=self.metadata)

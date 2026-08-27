@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 _HEX_BG = (
     "data:image/svg+xml,"
     "%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2763%27 height=%2754%27%3E"

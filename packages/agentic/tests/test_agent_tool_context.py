@@ -4,10 +4,10 @@ from contextlib import contextmanager
 import pytest
 
 from agentic.agent import Agent, AgentResult, Context
-from agentic.message import SystemMessage
-from providers.models.response import ModelResponse
+from agentic.message import AssistantMessage
 from agentic.prompts import GemmaPromptBuilder
-from agentic.tools import ToolCallCommand, ToolContext, Toolset, Toolsets
+from agentic.tools import ToolContext, Toolset, Toolsets
+from providers.models.response import ModelResponse
 
 
 class FakeModel:
@@ -163,7 +163,7 @@ def test_context_can_disable_history_in_prompt() -> None:
         prompt_builder=GemmaPromptBuilder(system_prompt="SYSTEM"),
         context=Context(add_history_to_context=False),
     )
-    agent.history.add(SystemMessage("OLD HISTORY"))
+    agent.history.add(AssistantMessage("OLD HISTORY"))
 
     _ = agent.run("new message")
     prompt = model.prompts[0]

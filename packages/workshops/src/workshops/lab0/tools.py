@@ -1,26 +1,80 @@
-from datetime import datetime
+from __future__ import annotations
+
+import ast
+from datetime import UTC, datetime
+import operator
+
+#: Operators the calculator accepts. Anything else is rejected at parse time.
+_BINARY_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+}
+_UNARY_OPERATORS = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
+
+#: Guards against results that are cheap to write and expensive to compute.
+_MAX_ABS_OPERAND = 10**15
 
 
 def get_current_time() -> str:
     """Return the current date and time."""
-    now = datetime.now()
-    return now.strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _evaluate_node(node: ast.expr) -> float:
+    """Evaluate one arithmetic node.
+
+    A restricted AST walk rather than ``eval``: a character allowlist still lets
+    ``9**9**9`` through, which hangs the process computing a number nobody asked
+    for. Exponentiation is simply not part of the grammar here.
+    """
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+            raise ValueError("only numbers are allowed")
+        if abs(node.value) > _MAX_ABS_OPERAND:
+            raise ValueError("number is too large")
+        return node.value
+
+    if isinstance(node, ast.UnaryOp):
+        unary = _UNARY_OPERATORS.get(type(node.op))
+        if unary is None:
+            raise ValueError(f"unsupported operator: {type(node.op).__name__}")
+        return unary(_evaluate_node(node.operand))
+
+    if isinstance(node, ast.BinOp):
+        binary = _BINARY_OPERATORS.get(type(node.op))
+        if binary is None:
+            raise ValueError(f"unsupported operator: {type(node.op).__name__}")
+        return binary(_evaluate_node(node.left), _evaluate_node(node.right))
+
+    raise ValueError(f"unsupported expression: {type(node).__name__}")
 
 
 def calculate(expression: str) -> str:
     """Evaluate a mathematical expression and return the result.
 
+    Supports + - * / // % and parentheses on plain numbers.
+
     Args:
         expression: A mathematical expression to evaluate, e.g. '2 + 2' or '(10 * 5) / 3'.
     """
-    allowed_chars = set("0123456789+-*/().% ")
-    if not all(c in allowed_chars for c in expression):
-        return "Error: expression contains disallowed characters."
     try:
-        result = eval(expression, {"__builtins__": {}}, {})  # noqa: S307
-        return str(result)
-    except Exception as e:
-        return f"Error: {e}"
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return "Error: that is not a valid arithmetic expression."
+
+    try:
+        return str(_evaluate_node(tree.body))
+    except ZeroDivisionError:
+        return "Error: division by zero."
+    except ValueError as error:
+        return f"Error: {error}"
 
 
 def roll_dice(notation: str) -> str:
@@ -38,7 +92,7 @@ def roll_dice(notation: str) -> str:
         parts = notation.split("d")
         count = int(parts[0]) if parts[0] else 1
         sides = int(parts[1])
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return "Error: invalid dice notation. Use NdM format, e.g. '2d6'."
 
     if count < 1 or count > 100 or sides < 2 or sides > 1000:

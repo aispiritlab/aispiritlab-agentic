@@ -1,8 +1,6 @@
-from pathlib import Path
-import sys
+"""Pytest configuration for the dataloader package."""
 
+from __future__ import annotations
 
-SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
-
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+# Specs for modules that are not implemented yet — see tests/pending/README.md.
+collect_ignore_glob = ["pending/*"]

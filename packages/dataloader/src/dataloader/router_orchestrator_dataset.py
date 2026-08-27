@@ -12,12 +12,13 @@ Commands:
 from __future__ import annotations
 
 import argparse
-import json
-import random
+from collections.abc import Sequence
 from dataclasses import dataclass
+import json
 from pathlib import Path
+import random
 from textwrap import dedent
-from typing import Final, Sequence, TypeVar
+from typing import Final, TypeVar
 
 import yaml
 
@@ -93,7 +94,7 @@ class AgentSpec:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object]) -> "AgentSpec":
+    def from_dict(cls, payload: dict[str, object]) -> AgentSpec:
         name = _require_non_empty_string(payload.get("name"), field_name="name")
         description = _require_non_empty_string(
             payload.get("description"),
@@ -416,13 +417,13 @@ def _default_evaluation_dir() -> Path:
     return _package_dir().parent / "evaluation" / "src" / "evaluation"
 
 
-def _choose(rng: random.Random, values: Sequence[T]) -> T:
+def _choose[T](rng: random.Random, values: Sequence[T]) -> T:
     if not values:
         raise ValueError("Expected at least one value to choose from.")
     return values[rng.randrange(len(values))]
 
 
-def _different_choice(
+def _different_choice[T](
     rng: random.Random,
     values: Sequence[T],
     current: T,
@@ -760,12 +761,18 @@ def _deep_history_same_agent(
     return RouterScenario(
         name=_scenario_name("deep_history_same_agent", spec.name, sample_index),
         history=(
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, spec.direct_requests))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, spec.direct_requests))
+            ),
             ConversationTurn(role="model", content=spec.name),
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, spec.follow_ups))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, spec.follow_ups))
+            ),
             ConversationTurn(role="model", content=spec.name),
         ),
-        current_message=_style_message(rng, _different_choice(rng, spec.follow_ups, spec.follow_ups[0])),
+        current_message=_style_message(
+            rng, _different_choice(rng, spec.follow_ups, spec.follow_ups[0])
+        ),
         expected_agent=spec.name,
         tags=("synthetic", "deep_history_same_agent", spec.name),
     )
@@ -785,7 +792,9 @@ def _switch_from_previous_agent(
             sample_index,
         ),
         history=(
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, previous.direct_requests))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, previous.direct_requests))
+            ),
             ConversationTurn(role="model", content=previous.name),
         ),
         current_message=_style_message(rng, _choose(rng, target.direct_requests)),
@@ -808,9 +817,13 @@ def _recent_context_wins(
             sample_index,
         ),
         history=(
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, dominant.direct_requests))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, dominant.direct_requests))
+            ),
             ConversationTurn(role="model", content=dominant.name),
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, recent.direct_requests))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, recent.direct_requests))
+            ),
             ConversationTurn(role="model", content=recent.name),
         ),
         current_message=_style_message(rng, _choose(rng, recent.follow_ups)),
@@ -833,9 +846,13 @@ def _older_topic_returns(
             sample_index,
         ),
         history=(
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, older.direct_requests))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, older.direct_requests))
+            ),
             ConversationTurn(role="model", content=older.name),
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, recent.direct_requests))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, recent.direct_requests))
+            ),
             ConversationTurn(role="model", content=recent.name),
         ),
         current_message=_style_message(
@@ -861,11 +878,20 @@ def _long_history_topic_switch(
             sample_index,
         ),
         history=(
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, dominant.direct_requests))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, dominant.direct_requests))
+            ),
             ConversationTurn(role="model", content=dominant.name),
-            ConversationTurn(role="user", content=_style_message(rng, _choose(rng, dominant.follow_ups))),
+            ConversationTurn(
+                role="user", content=_style_message(rng, _choose(rng, dominant.follow_ups))
+            ),
             ConversationTurn(role="model", content=dominant.name),
-            ConversationTurn(role="user", content=_style_message(rng, _different_choice(rng, dominant.follow_ups, dominant.follow_ups[0]))),
+            ConversationTurn(
+                role="user",
+                content=_style_message(
+                    rng, _different_choice(rng, dominant.follow_ups, dominant.follow_ups[0])
+                ),
+            ),
             ConversationTurn(role="model", content=dominant.name),
         ),
         current_message=_style_message(rng, _choose(rng, target.direct_requests)),
@@ -917,7 +943,9 @@ def build_seed_scenarios(
 
     for sample_index in range(1, count_per_template + 1):
         for target in specs:
-            previous = _choose(rng, [spec for spec in specs if spec.name != target.name] or [target])
+            previous = _choose(
+                rng, [spec for spec in specs if spec.name != target.name] or [target]
+            )
             scenarios.append(
                 _switch_from_previous_agent(
                     target=target,
@@ -926,7 +954,9 @@ def build_seed_scenarios(
                     sample_index=sample_index,
                 )
             )
-            dominant = _choose(rng, [spec for spec in specs if spec.name != target.name] or [target])
+            dominant = _choose(
+                rng, [spec for spec in specs if spec.name != target.name] or [target]
+            )
             scenarios.append(
                 _recent_context_wins(
                     dominant=dominant,
@@ -935,7 +965,9 @@ def build_seed_scenarios(
                     sample_index=sample_index,
                 )
             )
-            recent_for_return = _choose(rng, [spec for spec in specs if spec.name != target.name] or [target])
+            recent_for_return = _choose(
+                rng, [spec for spec in specs if spec.name != target.name] or [target]
+            )
             scenarios.append(
                 _older_topic_returns(
                     older=target,
@@ -944,7 +976,9 @@ def build_seed_scenarios(
                     sample_index=sample_index,
                 )
             )
-            dominant = _choose(rng, [spec for spec in specs if spec.name != target.name] or [target])
+            dominant = _choose(
+                rng, [spec for spec in specs if spec.name != target.name] or [target]
+            )
             scenarios.append(
                 _long_history_topic_switch(
                     target=target,
@@ -1239,8 +1273,7 @@ def write_assets(
         encoding="utf-8",
     )
     catalog_path.write_text(
-        json.dumps([spec.as_dict() for spec in agent_specs], ensure_ascii=False, indent=2)
-        + "\n",
+        json.dumps([spec.as_dict() for spec in agent_specs], ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
@@ -1416,8 +1449,6 @@ def main() -> None:
 
 
 __all__ = [
-    "AgentSpec",
-    "ConversationTurn",
     "CURRENT_AGENT_SPECS",
     "DEFAULT_CATALOG_MODE",
     "DEFAULT_RANDOM_SEED",
@@ -1425,9 +1456,11 @@ __all__ = [
     "FUTURE_AGENT_SPECS",
     "OUTPUT_DIR_NAME",
     "ROUTES",
+    "AgentSpec",
+    "ConversationTurn",
     "RouterScenario",
-    "build_history_aware_decision_prompt",
     "build_deepfabric_config",
+    "build_history_aware_decision_prompt",
     "build_seed_scenarios",
     "load_agent_specs",
     "main",

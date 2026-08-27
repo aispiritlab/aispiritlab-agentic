@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
+import hashlib
 from uuid import uuid4
 
-from agentic.agent import AgentResult, PromptSnapshot as AgentPromptSnapshot
+from agentic.agent import AgentResult
+from agentic.agent import PromptSnapshot as AgentPromptSnapshot
 from agentic.observability import TraceSnapshot, build_trace_snapshot
 from agentic.tools import ToolRunResult
-
 from agentic.workflow.messages import (
     AssistantMessage,
     ConversationData,
     Message,
-    RecordedMessageMetadata,
     MessageChunk,
     MessageCompleted,
     MessageStarted,
     PromptSnapshot,
+    RecordedMessageMetadata,
     ToolCallEvent,
     ToolResultMessage,
     UserMessage,
@@ -111,6 +111,7 @@ def build_prompt_snapshot_message(
     agent_name: str,
     snapshot: AgentPromptSnapshot | None,
     agent_run_id: str | None,
+    agent_result: AgentResult,
     ctx: TraceContext,
 ) -> PromptSnapshot | None:
     if snapshot is None:
@@ -133,6 +134,14 @@ def build_prompt_snapshot_message(
             trace=ctx.build_snapshot(),
             attempt_no=ctx.attempt_no,
             loop_iteration=ctx.loop_iteration,
+            model_name=agent_result.request_usage.model,
+            model_provider=agent_result.model_provider,
+            input_tokens=agent_result.request_usage.prompt_tokens,
+            output_tokens=agent_result.request_usage.completion_tokens,
+            total_tokens=agent_result.request_usage.total_tokens,
+            model_latency_ms=agent_result.request_usage.latency_ms,
+            finish_reason=agent_result.request_usage.finish_reason,
+            generation_config_hash=agent_result.generation_config_hash,
         ),
     )
 
@@ -155,7 +164,11 @@ def build_tool_messages(
         tool_name, parameters = tool_call
         tool_call_id = str(uuid4())
         tool_message_id = new_message_id()
-        tool_trace = tool_results_list[index].trace if index < len(tool_results_list) else agent_result.trace
+        tool_trace = (
+            tool_results_list[index].trace
+            if index < len(tool_results_list)
+            else agent_result.trace
+        )
         ctx = resolve_trace_context(
             incoming=incoming,
             trace=tool_trace,
@@ -242,11 +255,16 @@ def build_assistant_messages(
         chunks = utf8_chunks(text, chunk_bytes)
         published.append(
             MessageStarted(
-                data={"logical_kind": "assistant_message", "chunk_count": len(chunks), "total_bytes": encoded_length},
+                data={
+                    "logical_kind": "assistant_message",
+                    "chunk_count": len(chunks),
+                    "total_bytes": encoded_length,
+                },
                 metadata=RecordedMessageMetadata(
                     runtime_id=incoming.metadata.runtime_id,
                     turn_id=incoming.metadata.turn_id,
                     message_id=message_id,
+                    idempotency_key=f"{message_id}:started",
                     reply_to_message_id=reply_to_message_id,
                     domain=incoming.metadata.domain,
                     source=agent_name,
@@ -269,6 +287,7 @@ def build_assistant_messages(
                         runtime_id=incoming.metadata.runtime_id,
                         turn_id=incoming.metadata.turn_id,
                         message_id=message_id,
+                        idempotency_key=f"{message_id}:chunk:{index}",
                         reply_to_message_id=reply_to_message_id,
                         domain=incoming.metadata.domain,
                         source=agent_name,
@@ -291,6 +310,7 @@ def build_assistant_messages(
                     runtime_id=incoming.metadata.runtime_id,
                     turn_id=incoming.metadata.turn_id,
                     message_id=message_id,
+                    idempotency_key=f"{message_id}:completed",
                     reply_to_message_id=reply_to_message_id,
                     domain=incoming.metadata.domain,
                     source=agent_name,
@@ -313,6 +333,7 @@ def build_assistant_messages(
                 runtime_id=incoming.metadata.runtime_id,
                 turn_id=incoming.metadata.turn_id,
                 message_id=message_id,
+                idempotency_key=f"{message_id}:canonical",
                 reply_to_message_id=reply_to_message_id,
                 domain=incoming.metadata.domain,
                 source=agent_name,

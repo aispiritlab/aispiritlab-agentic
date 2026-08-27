@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from evaluation import Flow, Flows
 
-
 DEFAULT_ORGANIZER_FLOWS = Flows(
     Flow(
         name="flow::organizer_classify_all_para_buckets",

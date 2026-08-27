@@ -4,6 +4,7 @@ This replaces the for-loop pattern from lab2 with declarative event routing.
 Each TaskDelegated event is matched by the handler and dispatched to the
 correct worker agent via run_workflow.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -11,9 +12,10 @@ from collections.abc import Callable
 from agentic.specialized_agents.events import TaskCompleted, TaskDelegated
 from agentic.workflow import (
     TechnicalRoutingFn,
-    UserMessage,
     WorkflowOutputHandler,
+    reply_metadata,
     run_workflow,
+    user_message,
     workflow_output_handler,
 )
 from agentic.workflow.messages import Message
@@ -46,19 +48,20 @@ def build_worker_dispatch_handler(
             return f"[Unknown agent: {message.target_agent}]"
 
         execution = run_workflow(
-            message=UserMessage(
-                text=message.task_description,
+            message=user_message(
+                message.task_description,
                 source="planner",
+                reply_to=message,
             ),
             decider=worker_decider,
             routing_fn=routing,
         )
 
         task = TaskCompleted(
-            source=message.target_agent,
             target_agent=message.target_agent,
             task_description=message.task_description,
             result=execution.text,
+            metadata=reply_metadata(message, source=message.target_agent),
         )
         completed_tasks.append(task)
         if on_completed is not None:

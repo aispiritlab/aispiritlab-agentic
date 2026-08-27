@@ -3,6 +3,7 @@
 When the runtime publishes TaskDelegated events, the handler automatically
 routes them to the correct worker workflow. No manual dispatch needed.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -13,6 +14,8 @@ from agentic.workflow import (
     UserMessage,
     WorkflowOutputHandler,
     coerce_execution,
+    reply_metadata,
+    user_message,
     workflow_output_handler,
 )
 from agentic.workflow.messages import Message
@@ -41,16 +44,22 @@ def build_worker_output_handler(
         if workflow is None:
             return f"[Unknown agent: {message.target_agent}]"
 
-        handler = workflow.handle if hasattr(workflow, "handle") else workflow
+        handler = workflow.handle if isinstance(workflow, AgenticWorkflow) else workflow
         execution = coerce_execution(
-            handler(UserMessage(text=message.task_description, source="planner"))
+            handler(
+                user_message(
+                    message.task_description,
+                    source="planner",
+                    reply_to=message,
+                )
+            )
         )
 
         task = TaskCompleted(
-            source=message.target_agent,
             target_agent=message.target_agent,
             task_description=message.task_description,
             result=execution.text,
+            metadata=reply_metadata(message, source=message.target_agent),
         )
         if on_completed is not None:
             on_completed(task)

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from agentic.observability import LLMTracer, NoopLLMTracer
-
 from agentic.workflow.errors import StepLimitExceeded
 from agentic.workflow.message_stream import MessageStream
 from agentic.workflow.messages import Message
@@ -94,9 +93,7 @@ class MessageConsumer:
             ),
             trace_id=output.metadata.trace_id or command.metadata.trace_id,
             span_id=output.metadata.span_id or command.metadata.span_id,
-            parent_span_id=(
-                output.metadata.parent_span_id or command.metadata.parent_span_id
-            ),
+            parent_span_id=(output.metadata.parent_span_id or command.metadata.parent_span_id),
             span_name=output.metadata.span_name or command.metadata.span_name,
             span_type=output.metadata.span_type or command.metadata.span_type,
             attempt_no=output.metadata.attempt_no or attempts,
@@ -113,9 +110,6 @@ class MessageConsumer:
                 ):
                     return reactor.invoke(command), attempt + 1
             except Exception as error:
-                if (
-                    attempt >= self._config.max_retries
-                    or not self._config.is_retryable(error)
-                ):
+                if attempt >= self._config.max_retries or not self._config.is_retryable(error):
                     raise
         raise AssertionError("unreachable: retry loop must return or raise")

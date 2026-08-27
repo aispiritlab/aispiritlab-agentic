@@ -6,16 +6,16 @@ from agentic.prompts import QwenPromptBuilder
 from agentic.tools import Toolsets
 from agentic.workflow import WorkflowBuilder
 from agentic.workflow._workflow import AgenticWorkflow
-from registry import Prompts
-
-from agentic.workflow.messages import Message, UserCommand, UserMessage
+from agentic.workflow.messages import Message
 from agentic_runtime.execution import WorkflowExecution
 from agentic_runtime.reactor import LLMReactor
 from agentic_runtime.routing import make_llm_routing
-from agentic_runtime.workflow_runner import run_workflow
-
-from personal_assistant.deciders import build_note_events, make_manage_notes_decider
+from personal_assistant.deciders import (
+    build_successful_note_tool_events,
+    make_manage_notes_decider,
+)
 from personal_assistant.settings import settings
+from registry import Prompts
 
 from .manage_notes_agent import ManageNotesAgent
 from .tools import toolset as manage_notes_toolset
@@ -43,20 +43,12 @@ class ManageNotesWorkflow(AgenticWorkflow):
             agent_name=self._agent.description.agent_name,
         )
 
-        def _emit_events(response) -> tuple[Message, ...]:  # noqa: ANN001
-            if not response.has_tool_calls:
-                return ()
-
-            tool_call = response.tool_calls[0]
-            command = self._agent._agent.toolsets.parse_tool(tool_call)
-            if command is None:
-                return ()
-
-            return build_note_events(
-                command,
+        def _emit_events(response) -> tuple[Message, ...]:
+            return build_successful_note_tool_events(
+                response,
+                toolsets=self._agent._agent.toolsets,
                 resolve_note_path=self._agent._resolve_note_path,
                 agent_name=self._agent.description.agent_name,
-                metadata=response.metadata,
             )
 
         self._workflow = (
@@ -69,27 +61,7 @@ class ManageNotesWorkflow(AgenticWorkflow):
         self.description = self._workflow.description
 
     def handle(self, message: Message) -> WorkflowExecution | str:
-        workflow = getattr(self, "_workflow", None)
-        if workflow is not None:
-            return workflow.handle(message)
-        if isinstance(message, UserCommand):
-            if message.type == "start":
-                return self._agent.start()
-            if message.type == "reset":
-                self._agent.reset()
-            return ""
-        if not isinstance(message, UserMessage):
-            return ""
-
-        return run_workflow(
-            message=message,
-            decider=self._decider,
-            routing_fn=self._routing,
-        )
+        return self._workflow.handle(message)
 
     def close(self) -> None:
-        workflow = getattr(self, "_workflow", None)
-        if workflow is not None:
-            workflow.close()
-            return
-        self._agent.close()
+        self._workflow.close()

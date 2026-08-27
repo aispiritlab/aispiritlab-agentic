@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import httpx
+import pytest
+
 from agentic.integrations.search_provider import (
     LangSearchProvider,
     SearchResult,
@@ -7,8 +10,6 @@ from agentic.integrations.search_provider import (
 )
 from agentic.integrations.tavily_search_provider import TavilySearchProvider
 from agentic.integrations.valyu_search_provider import ValyuSearchProvider
-import httpx
-import pytest
 
 
 class _HttpClientStub:
@@ -142,7 +143,11 @@ def test_tavily_provider_logs_success(monkeypatch) -> None:
         _ResponseStub(
             {
                 "results": [
-                    {"title": "DDD", "url": "https://example.com/ddd", "content": "Domain-driven design"},
+                    {
+                        "title": "DDD",
+                        "url": "https://example.com/ddd",
+                        "content": "Domain-driven design",
+                    },
                 ]
             },
             status_code=200,

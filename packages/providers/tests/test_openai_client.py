@@ -84,7 +84,10 @@ class TestOpenAIInferenceClient:
 
     def test_chat_empty_choices(self) -> None:
         mock_response = SimpleNamespace(
-            id="req-2", model="test", choices=[], usage=None,
+            id="req-2",
+            model="test",
+            choices=[],
+            usage=None,
         )
 
         with patch("providers.client._openai_client.OpenAI") as mock_openai_cls:

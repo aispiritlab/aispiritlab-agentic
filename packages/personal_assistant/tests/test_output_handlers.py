@@ -3,10 +3,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from agentic.workflow import InMemoryCheckpointStore, InMemoryEventStore
 from agentic.workflow.messages import RecordedMessageMetadata
-from personal_assistant.messaging.events import CreatedNote, NoteDeleted, NoteUpdated
 from agentic_runtime.output_handler import dispatch_output_handlers
+from personal_assistant.messaging.events import CreatedNote, NoteDeleted, NoteUpdated
 from personal_assistant.output_handlers import (
+    DurableKnowledgeBaseProjector,
     KnowledgeBaseTaskRunner,
     build_organizer_output_handler,
     build_rag_output_handler,
@@ -63,3 +65,49 @@ def test_knowledge_base_task_runner_close_is_idempotent() -> None:
 
     runner.close()
     runner.close()
+
+
+def test_task_runner_exposes_background_failure() -> None:
+    def fail(_: str) -> None:
+        raise RuntimeError("index unavailable")
+
+    runner = KnowledgeBaseTaskRunner(update_note=fail)
+    runner.submit_update("/notes/foo.md")
+
+    failures = runner.flush()
+    runner.close()
+
+    assert len(failures) == 1
+    assert str(failures[0]) == "index unavailable"
+
+
+def test_durable_kb_projector_resumes_from_global_checkpoint() -> None:
+    event_store = InMemoryEventStore()
+    checkpoints = InMemoryCheckpointStore()
+    updated: list[str] = []
+    event_store.append_to_stream(
+        "note:workspace:foo",
+        [NoteUpdated(note_name="Foo", note_path="/notes/foo.md")],
+    )
+    first = DurableKnowledgeBaseProjector(
+        event_store=event_store,
+        checkpoint_store=checkpoints,
+        update_note=updated.append,
+    )
+    first.start()
+    first.run_to_end()
+    first.close()
+
+    event_store.append_to_stream(
+        "note:workspace:bar",
+        [NoteUpdated(note_name="Bar", note_path="/notes/bar.md")],
+    )
+    second = DurableKnowledgeBaseProjector(
+        event_store=event_store,
+        checkpoint_store=checkpoints,
+        update_note=updated.append,
+    )
+    second.start()
+    second.run_to_end()
+
+    assert updated == ["/notes/foo.md", "/notes/bar.md"]

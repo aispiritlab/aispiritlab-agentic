@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 import pytest
 
@@ -214,7 +213,9 @@ def test_dispatcher_clear_discards_pending_partial_batch() -> None:
     handled_batches: list[list[str]] = []
     handler = workflow_output_handler(
         can_handle=(NoteUpdated,),
-        each_batch=lambda ms: handled_batches.append([message.note_name for message in ms]) or ["ok"],
+        each_batch=lambda ms: (
+            handled_batches.append([message.note_name for message in ms]) or ["ok"]
+        ),
         batch_size=2,
     )
     dispatcher = OutputHandlerDispatcher([handler])

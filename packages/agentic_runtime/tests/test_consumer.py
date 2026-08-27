@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import pytest
 
@@ -15,7 +15,6 @@ from agentic_runtime.messaging.messages import (
     UserMessage,
 )
 from agentic_runtime.reactor import Reactor
-
 
 # --- Fakes ---
 
@@ -201,8 +200,7 @@ class TestMessageConsumerRetry:
 
         messages = stream.all_messages()
         assert any(
-            isinstance(m, AssistantMessage) and m.data.text == "recovered"
-            for m in messages
+            isinstance(m, AssistantMessage) and m.data.text == "recovered" for m in messages
         )
 
     def test_raises_non_retryable_error(self) -> None:

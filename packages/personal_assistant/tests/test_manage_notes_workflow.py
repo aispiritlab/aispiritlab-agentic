@@ -4,21 +4,27 @@ from typing import Any
 from agentic.agent import AgentResult
 from agentic.core_agent import CoreAgentResponse
 from agentic.tools import ToolRunResult
-
-from personal_assistant.deciders import make_manage_notes_decider
+from agentic.workflow import WorkflowBuilder
 from agentic_runtime.execution import WorkflowExecution
-from personal_assistant.agents.manage_notes.commands import AddNoteCommand, EditNoteCommand
-from personal_assistant.agents.manage_notes.manage_notes_workflow import ManageNotesWorkflow
-from personal_assistant.messaging.events import CreatedNote, NoteUpdated
-from agentic_runtime.messaging.messages import ConversationData, RecordedMessageMetadata, UserCommand, UserMessage
+from agentic_runtime.messaging.messages import (
+    ConversationData,
+    RecordedMessageMetadata,
+    UserCommand,
+    UserMessage,
+)
 from agentic_runtime.reactor import LLMReactor
 from agentic_runtime.routing import make_llm_routing
+from personal_assistant.agents.manage_notes.commands import AddNoteCommand, EditNoteCommand
+from personal_assistant.agents.manage_notes.manage_notes_workflow import ManageNotesWorkflow
+from personal_assistant.deciders import build_note_events, make_manage_notes_decider
+from personal_assistant.messaging.events import CreatedNote, NoteUpdated
 
 
 def _build_workflow(
     fake_respond: Any,
     parse_tool_fn: Any = None,
     resolve_note_path: Any = None,
+    reset_hook: Any = None,
 ) -> ManageNotesWorkflow:
     """Build a ManageNotesWorkflow with fake agent for testing."""
     workflow = ManageNotesWorkflow.__new__(ManageNotesWorkflow)
@@ -27,7 +33,7 @@ def _build_workflow(
     fake_agent = SimpleNamespace(
         respond=fake_respond,
         start=lambda: "start",
-        reset=lambda: None,
+        reset=reset_hook or (lambda: None),
         _agent=SimpleNamespace(
             toolsets=SimpleNamespace(
                 parse_tool=parse_tool_fn or (lambda tc: None),
@@ -44,6 +50,30 @@ def _build_workflow(
         resolve_note_path=fake_agent._resolve_note_path,
         agent_name="manage_notes",
     )
+
+    def _emit_events(response: Any) -> tuple[Any, ...]:
+        if not response.has_tool_calls:
+            return ()
+        command = fake_agent._agent.toolsets.parse_tool(response.tool_calls[0])
+        if command is None:
+            return ()
+        return build_note_events(
+            command,
+            resolve_note_path=fake_agent._resolve_note_path,
+            agent_name="manage_notes",
+            metadata=response.metadata,
+        )
+
+    # Build the real inner workflow, the same way __init__ does, so these tests
+    # exercise the production handle() path.
+    workflow._workflow = (
+        WorkflowBuilder("manage_notes")
+        .agent(fake_agent)
+        .inputs("UserMessage", "UserCommand")
+        .emit_events(_emit_events)
+        .build()
+    )
+    workflow.description = workflow._workflow.description
     return workflow
 
 
@@ -69,8 +99,10 @@ def test_manage_notes_workflow_returns_text_and_publishes_created_note_event() -
         UserMessage(
             data=ConversationData(role="user", text="Dodaj notatkę"),
             metadata=RecordedMessageMetadata(
-                runtime_id="runtime-1", domain="manage_notes",
-                source="user", target="manage_notes",
+                runtime_id="runtime-1",
+                domain="manage_notes",
+                source="user",
+                target="manage_notes",
             ),
         ),
     )
@@ -79,7 +111,7 @@ def test_manage_notes_workflow_returns_text_and_publishes_created_note_event() -
     assert result.text == "Notatka dodana."
     assert any(isinstance(e, CreatedNote) for e in result.emitted_events)
     assert any(isinstance(e, NoteUpdated) for e in result.emitted_events)
-    created = [e for e in result.emitted_events if isinstance(e, CreatedNote)][0]
+    created = next(e for e in result.emitted_events if isinstance(e, CreatedNote))
     assert created.note_name == "Projekt"
     assert created.note_content == "Plan sprintu"
     assert created.metadata.source == "manage_notes"
@@ -107,8 +139,10 @@ def test_manage_notes_workflow_publishes_note_updated_for_edit_note() -> None:
         UserMessage(
             data=ConversationData(role="user", text="Edytuj notatkę"),
             metadata=RecordedMessageMetadata(
-                runtime_id="runtime-1", domain="manage_notes",
-                source="user", target="manage_notes",
+                runtime_id="runtime-1",
+                domain="manage_notes",
+                source="user",
+                target="manage_notes",
             ),
         ),
     )
@@ -133,8 +167,10 @@ def test_manage_notes_workflow_returns_plain_text_without_publishing_event() -> 
         UserMessage(
             data=ConversationData(role="user", text="Pokaż notatki"),
             metadata=RecordedMessageMetadata(
-                runtime_id="runtime-1", domain="manage_notes",
-                source="user", target="manage_notes",
+                runtime_id="runtime-1",
+                domain="manage_notes",
+                source="user",
+                target="manage_notes",
             ),
         ),
     )
@@ -145,20 +181,24 @@ def test_manage_notes_workflow_returns_plain_text_without_publishing_event() -> 
 
 
 def test_manage_notes_workflow_resets_agent_with_command() -> None:
-    workflow = ManageNotesWorkflow.__new__(ManageNotesWorkflow)
     reset_calls: list[str] = []
-    workflow._agent = SimpleNamespace(
-        reset=lambda: reset_calls.append("reset"),
-        start=lambda: "start",
+
+    def _unused_respond(message: Any) -> Any:  # pragma: no cover - reset never responds
+        raise AssertionError("reset must not call the model")
+
+    workflow = _build_workflow(
+        _unused_respond,
+        reset_hook=lambda: reset_calls.append("reset"),
     )
 
-    response = ManageNotesWorkflow.handle(
-        workflow,
+    response = workflow.handle(
         UserCommand(
             type="reset",
             metadata=RecordedMessageMetadata(
-                runtime_id="runtime-1", domain="manage_notes",
-                source="runtime", target="manage_notes",
+                runtime_id="runtime-1",
+                domain="manage_notes",
+                source="runtime",
+                target="manage_notes",
             ),
         ),
     )
@@ -195,8 +235,10 @@ def test_manage_notes_workflow_respond_path_emits_domain_events_single_pass() ->
         UserMessage(
             data=ConversationData(role="user", text="Dodaj notatkę Projekt"),
             metadata=RecordedMessageMetadata(
-                runtime_id="runtime-1", domain="manage_notes",
-                source="user", target="manage_notes",
+                runtime_id="runtime-1",
+                domain="manage_notes",
+                source="user",
+                target="manage_notes",
             ),
         ),
     )

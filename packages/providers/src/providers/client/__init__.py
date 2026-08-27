@@ -29,26 +29,34 @@ class ProviderClient:
         backend: ClientBackend = "openai",
         api_key: str = "no-key",
         model: str = "default",
-        config: InferenceConfig = InferenceConfig(),
+        config: InferenceConfig | None = None,
     ) -> None:
         if backend not in ("openai", "httpx"):
             raise ValueError(f"Unsupported backend: {backend}")
+        config = config or InferenceConfig()
         self._backend_type = backend
         if backend == "openai":
             self._openai: OpenAIInferenceClient | None = OpenAIInferenceClient(
-                base_url, api_key=api_key, model=model, config=config,
+                base_url,
+                api_key=api_key,
+                model=model,
+                config=config,
             )
             self._http: HttpInferenceClient | None = None
         else:
             self._openai = None
             self._http = HttpInferenceClient(
-                base_url, api_key=api_key, model=model, config=config,
+                base_url,
+                api_key=api_key,
+                model=model,
+                config=config,
             )
 
     def chat(self, prompt: str | list[dict[str, str]], **kwargs: Any) -> InferenceResponse:
         if self._openai is not None:
             return self._openai.chat(prompt, **kwargs)
-        assert self._http is not None
+        if self._http is None:
+            raise RuntimeError("ProviderClient has no configured backend.")
         return self._http.chat(prompt, **kwargs)
 
     async def achat(self, prompt: str | list[dict[str, str]], **kwargs: Any) -> InferenceResponse:

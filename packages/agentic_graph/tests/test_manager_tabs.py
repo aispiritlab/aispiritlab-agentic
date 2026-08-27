@@ -85,7 +85,7 @@ def test_run_runtime_returns_ok_status(monkeypatch) -> None:
 
 
 def test_run_runtime_returns_error_status_when_runtime_fails(monkeypatch) -> None:
-    def _raise_runtime_error(graph, runtime_message, runtime_secrets=None):  # noqa: ANN001
+    def _raise_runtime_error(graph, runtime_message, runtime_secrets=None):
         del graph, runtime_message, runtime_secrets
         raise RuntimeError("boom")
 

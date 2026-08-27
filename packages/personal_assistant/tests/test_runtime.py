@@ -1,11 +1,9 @@
 from contextlib import contextmanager
-import threading
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
 from agentic.agent import AgentResult
-from providers.image.mflux import ImageGenerationResult
 from agentic.observability import NoopLLMTracer, TraceSnapshot
 from agentic.workflow.messages import (
     AssistantMessage,
@@ -21,11 +19,11 @@ from agentic.workflow.messages import (
 from agentic_runtime.execution import ExecutionTurnRecord, WorkflowExecution
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.output_handler import workflow_output_handler
-from agentic_runtime.workspaces import build_session_id
+import agentic_runtime.runtime as base_runtime_module
 from personal_assistant.messaging.events import CreatedNote
-from personal_assistant.output_handlers import build_organizer_output_handler
 import personal_assistant.runtime as runtime_module
-from personal_assistant.runtime import PARuntime as AgenticRuntime
+from personal_assistant.runtime import PARuntime
+from providers.image.mflux import ImageGenerationResult
 
 
 class _TraceHandle:
@@ -88,88 +86,133 @@ def _created_note(
     )
 
 
+def _stub_workflow(agent_name, description, capabilities, handle):
+    return SimpleNamespace(
+        description=SimpleNamespace(
+            agent_name=agent_name,
+            description=description,
+            capabilities=capabilities,
+        ),
+        handle=handle,
+        close=lambda: None,
+    )
+
+
+class _TestPARuntime(PARuntime):
+    """PARuntime with in-memory infrastructure and stubbed agents.
+
+    Overrides only the infrastructure factories, so every test below still runs
+    the real AgenticRuntime turn planning, routing and shutdown code.
+    """
+
+    # Wrapped in staticmethod so an assigned function stays a plain callable
+    # instead of binding self as its first argument.
+    note_handle = staticmethod(lambda message: "Notatka Projekt dodana.")
+    organizer_handle = staticmethod(lambda message: "organizer")
+
+    def _create_message_store(self):
+        return SimpleNamespace(close=lambda: None)
+
+    def _create_bus(self, store):
+        del store
+        return InMemoryMessageBus()
+
+    def _configure_providers(self) -> None:
+        return None
+
+    def _build_workflows(self, services):
+        del services
+        self.personalize_workflow = _stub_workflow(
+            "personalize",
+            "personalize workflow",
+            ("personalization",),
+            lambda message: "personalize",
+        )
+        self.note_workflow = _stub_workflow(
+            "manage_notes",
+            "manage workflow",
+            ("notes",),
+            self.note_handle,
+        )
+        self.discovery_notes_workflow = _stub_workflow(
+            "discovery_notes",
+            "discovery workflow",
+            ("search",),
+            lambda message: "discovery",
+        )
+        self.sage_workflow = _stub_workflow(
+            "sage",
+            "sage workflow",
+            ("decision-making",),
+            lambda message: "sage",
+        )
+        self.organizer_workflow = _stub_workflow(
+            "organizer",
+            "organizer workflow",
+            ("organize",),
+            self.organizer_handle,
+        )
+        return (
+            self.personalize_workflow,
+            self.note_workflow,
+            self.discovery_notes_workflow,
+            self.sage_workflow,
+            self.organizer_workflow,
+        )
+
+
+@contextmanager
+def _offline_runtime_dependencies(tracer=None):
+    """Replace every external dependency PARuntime.__init__ reaches for."""
+    patches = {
+        (base_runtime_module, "init_tracing"): lambda: None,
+        (base_runtime_module, "create_tracer"): lambda enabled=True: tracer or NoopLLMTracer(),
+        (runtime_module, "RouterAgent"): lambda: SimpleNamespace(
+            route=lambda text, summary: "manage_notes",
+            start=lambda: "greeting",
+            close=lambda: None,
+        ),
+        (runtime_module, "KnowledgeBaseTaskRunner"): lambda **_: SimpleNamespace(
+            close=lambda: None,
+            submit_resync=lambda: None,
+            submit_update=lambda _path: None,
+            submit_delete=lambda _path: None,
+        ),
+        (runtime_module, "MfluxImageCall"): lambda **_: SimpleNamespace(close=lambda: None),
+    }
+    originals = {key: getattr(key[0], key[1]) for key in patches}
+    for (module, name), value in patches.items():
+        setattr(module, name, value)
+    try:
+        yield
+    finally:
+        for (module, name), value in originals.items():
+            setattr(module, name, value)
+
+
 def _build_runtime(
     *,
-    note_handle=None,  # noqa: ANN001
-    organizer_handle=None,  # noqa: ANN001
-) -> AgenticRuntime:
-    runtime = AgenticRuntime.__new__(AgenticRuntime)
-    runtime._stop_lock = threading.Lock()
-    runtime._stopped = False
-    runtime.runtime_id = "runtime-1"
-    runtime.user_slug = "default"
-    runtime.user_name = "default"
-    runtime.workspace_slug = "default"
-    runtime.session_id = build_session_id("default", "default")
-    runtime.bus = InMemoryMessageBus()
-    runtime._tracer = NoopLLMTracer()
-    runtime.router = SimpleNamespace(
-        route=lambda text, summary: "manage_notes",
-        start=lambda: "greeting",
-        close=lambda: None,
-    )
-    runtime._kb_task_runner = SimpleNamespace(close=lambda: None)
-    runtime.llm_call = None
-    runtime.image_call = SimpleNamespace(close=lambda: None)
+    note_handle=None,
+    organizer_handle=None,
+    tracer=None,
+) -> PARuntime:
+    class _Runtime(_TestPARuntime):
+        pass
 
-    runtime.personalize_workflow = SimpleNamespace(
-        description=SimpleNamespace(
-            agent_name="personalize",
-            description="personalize workflow",
-            capabilities=("personalization",),
-        ),
-        handle=lambda message: "personalize",
-        close=lambda: None,
-    )
-    runtime.discovery_notes_workflow = SimpleNamespace(
-        description=SimpleNamespace(
-            agent_name="discovery_notes",
-            description="discovery workflow",
-            capabilities=("search",),
-        ),
-        handle=lambda message: "discovery",
-        close=lambda: None,
-    )
-    runtime.sage_workflow = SimpleNamespace(
-        description=SimpleNamespace(
-            agent_name="sage",
-            description="sage workflow",
-            capabilities=("decision-making",),
-        ),
-        handle=lambda message: "sage",
-        close=lambda: None,
-    )
-    runtime.note_workflow = SimpleNamespace(
-        description=SimpleNamespace(
-            agent_name="manage_notes",
-            description="manage workflow",
-            capabilities=("notes",),
-        ),
-        handle=note_handle or (lambda message: "Notatka Projekt dodana."),
-        close=lambda: None,
-    )
-    runtime.organizer_workflow = SimpleNamespace(
-        description=SimpleNamespace(
-            agent_name="organizer",
-            description="organizer workflow",
-            capabilities=("organize",),
-        ),
-        handle=organizer_handle or (lambda message: "organizer"),
-        close=lambda: None,
-    )
-    runtime.workflows = {
-        "personalize": runtime.personalize_workflow,
-        "manage_notes": runtime.note_workflow,
-        "discovery_notes": runtime.discovery_notes_workflow,
-        "sage": runtime.sage_workflow,
-        "organizer": runtime.organizer_workflow,
-    }
-    runtime.bus.register_output_handler(build_organizer_output_handler(runtime.organizer_workflow))
+    if note_handle is not None:
+        _Runtime.note_handle = staticmethod(note_handle)
+    if organizer_handle is not None:
+        _Runtime.organizer_handle = staticmethod(organizer_handle)
+
+    with _offline_runtime_dependencies(tracer):
+        runtime = _Runtime()
+
+    runtime.runtime_id = "runtime-1"
     return runtime
 
 
 def test_new_runtime_id_uses_uuidv7() -> None:
-    runtime_id = AgenticRuntime._new_runtime_id()
+    runtime_id = PARuntime._new_runtime_id()
 
     assert UUID(runtime_id).version == 7
 
@@ -197,37 +240,49 @@ def test_runtime_init_sets_store_bus_and_session_id(monkeypatch) -> None:
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(runtime_module, "init_tracing", lambda: None)
-    monkeypatch.setattr(runtime_module, "create_tracer", lambda enabled=True: NoopLLMTracer())
-    monkeypatch.setattr(runtime_module, "SQLiteMessageStore", lambda **_: _StubStore())
+    monkeypatch.setattr(base_runtime_module, "init_tracing", lambda: None)
+    monkeypatch.setattr(base_runtime_module, "create_tracer", lambda enabled=True: NoopLLMTracer())
+    monkeypatch.setattr(base_runtime_module, "SQLiteMessageStore", lambda **_: _StubStore())
     monkeypatch.setattr(runtime_module, "RouterAgent", lambda: SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(
         runtime_module,
         "KnowledgeBaseTaskRunner",
         lambda **_: _StubTaskRunner(),
     )
-    monkeypatch.setattr(runtime_module, "build_organizer_output_handler", lambda workflow: lambda message: [])
-    monkeypatch.setattr(runtime_module, "build_rag_output_handler", lambda runner: lambda message: [])
-    monkeypatch.setattr(runtime_module, "OpenAIProvider", SimpleNamespace(configure=lambda **_: None))
+    monkeypatch.setattr(
+        runtime_module, "build_organizer_output_handler", lambda workflow: lambda message: []
+    )
+    monkeypatch.setattr(
+        runtime_module, "build_rag_output_handler", lambda runner: lambda message: []
+    )
+    monkeypatch.setattr(
+        base_runtime_module, "OpenAIProvider", SimpleNamespace(configure=lambda **_: None)
+    )
     monkeypatch.setattr(runtime_module, "MfluxImageCall", lambda **_: _StubImageCall())
     monkeypatch.setattr(
         runtime_module,
         "LLMCall",
         lambda model_name, tracer: SimpleNamespace(close=lambda: None),
     )
-    monkeypatch.setattr(
-        AgenticRuntime,
-        "_build_workflows",
-        lambda self, bus: (
-            _StubWorkflow("personalize"),
-            _StubWorkflow("manage_notes"),
-            _StubWorkflow("discovery_notes"),
-            _StubWorkflow("sage"),
-            _StubWorkflow("organizer"),
-        ),
-    )
 
-    runtime = AgenticRuntime(user_slug="alice", workspace_slug="research")
+    def _stub_build_workflows(self, services):
+        del services
+        self.personalize_workflow = _StubWorkflow("personalize")
+        self.note_workflow = _StubWorkflow("manage_notes")
+        self.discovery_notes_workflow = _StubWorkflow("discovery_notes")
+        self.sage_workflow = _StubWorkflow("sage")
+        self.organizer_workflow = _StubWorkflow("organizer")
+        return (
+            self.personalize_workflow,
+            self.note_workflow,
+            self.discovery_notes_workflow,
+            self.sage_workflow,
+            self.organizer_workflow,
+        )
+
+    monkeypatch.setattr(PARuntime, "_build_workflows", _stub_build_workflows)
+
+    runtime = PARuntime(user_slug="alice", workspace_slug="research")
 
     assert runtime.user_slug == "alice"
     assert runtime.workspace_slug == "research"
@@ -287,9 +342,10 @@ def test_given_user_message_when_runtime_handles_then_routes_to_workflow() -> No
     assert turn_completed.data["final_message_id"] == assistant_messages[-1].metadata.message_id
 
 
-def test_given_fallback_llm_call_when_runtime_handles_then_trace_and_run_id_are_preserved() -> None:
-    runtime = _build_runtime()
-    runtime._tracer = _TraceTracer()
+def test_given_fallback_llm_call_when_runtime_handles_then_trace_and_run_id_are_preserved() -> (
+    None
+):
+    runtime = _build_runtime(tracer=_TraceTracer())
     runtime.router = SimpleNamespace(route=lambda text, summary: None, start=lambda: "greeting")
     runtime.llm_call = SimpleNamespace(
         respond=lambda text: SimpleNamespace(
@@ -393,7 +449,9 @@ def test_runtime_stop_closes_resources_and_is_idempotent(monkeypatch) -> None:
     runtime.bus = SimpleNamespace(close=lambda: close_steps.append("bus"))
     runtime._tracer = SimpleNamespace(shutdown=lambda: close_steps.append("tracer"))
 
-    monkeypatch.setattr(runtime_module, "close_knowledge_base", lambda: close_steps.append("knowledge_base"))
+    monkeypatch.setattr(
+        runtime_module, "close_knowledge_base", lambda: close_steps.append("knowledge_base")
+    )
 
     runtime.stop()
     runtime.stop()
@@ -440,7 +498,7 @@ def test_bus_close_flushes_pending_batch_output_handlers() -> None:
         def __init__(self) -> None:
             self.closed = False
 
-        def enqueue(self, message) -> None:  # noqa: ANN001
+        def enqueue(self, message) -> None:
             del message
 
         def close(self) -> None:
@@ -452,9 +510,9 @@ def test_bus_close_flushes_pending_batch_output_handlers() -> None:
     bus.register_output_handler(
         workflow_output_handler(
             can_handle=(CreatedNote,),
-            each_batch=lambda messages: flushed_batches.append(
-                [message.note_name for message in messages]
-            ) or [None],
+            each_batch=lambda messages: (
+                flushed_batches.append([message.note_name for message in messages]) or [None]
+            ),
             batch_size=2,
         )
     )
@@ -504,21 +562,21 @@ def test_given_user_command_reset_when_clear_history_then_all_workflows_reset() 
     previous_runtime_id = runtime.runtime_id
     received_commands: list[tuple[str, str]] = []
 
-    runtime.personalize_workflow.handle = lambda message: received_commands.append(
-        ("personalize", message.type)
-    ) or ""
-    runtime.note_workflow.handle = lambda message: received_commands.append(
-        ("manage_notes", message.type)
-    ) or ""
-    runtime.discovery_notes_workflow.handle = lambda message: received_commands.append(
-        ("discovery_notes", message.type)
-    ) or ""
-    runtime.sage_workflow.handle = lambda message: received_commands.append(
-        ("sage", message.type)
-    ) or ""
-    runtime.organizer_workflow.handle = lambda message: received_commands.append(
-        ("organizer", message.type)
-    ) or ""
+    runtime.personalize_workflow.handle = lambda message: (
+        received_commands.append(("personalize", message.type)) or ""
+    )
+    runtime.note_workflow.handle = lambda message: (
+        received_commands.append(("manage_notes", message.type)) or ""
+    )
+    runtime.discovery_notes_workflow.handle = lambda message: (
+        received_commands.append(("discovery_notes", message.type)) or ""
+    )
+    runtime.sage_workflow.handle = lambda message: (
+        received_commands.append(("sage", message.type)) or ""
+    )
+    runtime.organizer_workflow.handle = lambda message: (
+        received_commands.append(("organizer", message.type)) or ""
+    )
     runtime.bus.publish(
         _user_message(runtime_id=runtime.runtime_id, domain="general", source="user", text="hej")
     )
@@ -542,44 +600,7 @@ def test_given_personalization_finished_when_summary_then_hides_organizer_and_pe
     monkeypatch,
 ) -> None:
     # given
-    runtime = AgenticRuntime.__new__(AgenticRuntime)
-    runtime.workflows = {
-        "personalize": SimpleNamespace(
-            description=SimpleNamespace(
-                agent_name="personalize",
-                description="personalize workflow",
-                capabilities=("personalization",),
-            )
-        ),
-        "manage_notes": SimpleNamespace(
-            description=SimpleNamespace(
-                agent_name="manage_notes",
-                description="manage workflow",
-                capabilities=("notes",),
-            )
-        ),
-        "discovery_notes": SimpleNamespace(
-            description=SimpleNamespace(
-                agent_name="discovery_notes",
-                description="discovery workflow",
-                capabilities=("search",),
-            )
-        ),
-        "sage": SimpleNamespace(
-            description=SimpleNamespace(
-                agent_name="sage",
-                description="sage workflow",
-                capabilities=("decision-making",),
-            )
-        ),
-        "organizer": SimpleNamespace(
-            description=SimpleNamespace(
-                agent_name="organizer",
-                description="organizer workflow",
-                capabilities=("organize",),
-            )
-        ),
-    }
+    runtime = _build_runtime()
     monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda _user=None: True)
 
     # when
@@ -597,29 +618,12 @@ def test_given_personalization_not_finished_when_resolve_then_allows_personalize
     monkeypatch,
 ) -> None:
     # given
-    runtime = AgenticRuntime.__new__(AgenticRuntime)
-    personalize_workflow = SimpleNamespace(
-        description=SimpleNamespace(
-            agent_name="personalize",
-            description="personalize workflow",
-            capabilities=("personalization",),
-        )
-    )
-    runtime.workflows = {
-        "personalize": personalize_workflow,
-        "manage_notes": SimpleNamespace(
-            description=SimpleNamespace(
-                agent_name="manage_notes",
-                description="manage workflow",
-                capabilities=("notes",),
-            )
-        ),
-    }
+    runtime = _build_runtime()
     runtime.router = SimpleNamespace(route=lambda text, summary: "personalize")
 
     # when / then
     monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda _user=None: False)
-    assert runtime._resolve_workflow("hej") is personalize_workflow
+    assert runtime._resolve_workflow("hej") is runtime.personalize_workflow
 
     monkeypatch.setattr(runtime_module, "is_personalization_finished", lambda _user=None: True)
     assert runtime._resolve_workflow("hej") is None
@@ -742,13 +746,12 @@ def test_reply_to_chains_across_turns() -> None:
     )
 
     # First tool_call should reply to user message
-    first_tool_call = [m for m in runtime.bus.messages if isinstance(m, ToolCallEvent)][0]
+    first_tool_call = next(m for m in runtime.bus.messages if isinstance(m, ToolCallEvent))
     assert first_tool_call.metadata.reply_to_message_id == "msg-user"
 
     # Each subsequent tool message should chain reply_to from previous
     all_chained = [
-        m for m in runtime.bus.messages
-        if isinstance(m, (ToolCallEvent, ToolResultMessage))
+        m for m in runtime.bus.messages if isinstance(m, (ToolCallEvent, ToolResultMessage))
     ]
     for i in range(1, len(all_chained)):
         assert all_chained[i].metadata.reply_to_message_id is not None

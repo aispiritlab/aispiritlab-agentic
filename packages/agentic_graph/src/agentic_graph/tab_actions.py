@@ -6,6 +6,7 @@ import json
 import uuid
 
 import gradio as gr
+from structlog import get_logger
 
 from agentic_graph.builder import AgenticGraphBuilder
 from agentic_graph.models import AgentGraph, AgentNode, NodePosition
@@ -20,6 +21,8 @@ from agentic_graph.tab_state import (
     normalize_text,
     sanitize_graph_and_secrets,
 )
+
+logger = get_logger(__name__)
 
 
 def format_runtime_result(result: RuntimeExecutionResult) -> str:
@@ -107,7 +110,7 @@ def on_node_selected(
         return "", "", "", "", "", "", "", "", "", "", "", ""
     try:
         graph = graph_from_json(graph_json)
-    except (json.JSONDecodeError, KeyError):
+    except json.JSONDecodeError, KeyError:
         return "", "", "", "", "", "", "", "", "", "", "", ""
     for node in graph.nodes:
         if node.node_id == node_id:
@@ -408,14 +411,17 @@ def load_from_workspace(workspace_name: str) -> tuple[str, str]:
 
 def delete_workspace_action(workspace_name: str) -> tuple[object, str]:
     """Delete a workspace preset."""
-    from agentic_runtime.workspaces import delete_workspace, list_workspaces
     import gradio as gr
+
+    from agentic_runtime.workspaces import delete_workspace, list_workspaces
 
     if not workspace_name:
         return gr.skip(), "Select a workspace to delete."
 
     slug_map = {w.name: w.slug for w in list_workspaces()}
-    slug = slug_map.get(workspace_name, workspace_name)
+    slug = slug_map.get(workspace_name)
+    if slug is None and workspace_name in slug_map.values():
+        slug = workspace_name
     if not slug:
         return gr.skip(), "Workspace not found."
     try:
@@ -427,7 +433,7 @@ def delete_workspace_action(workspace_name: str) -> tuple[object, str]:
 
         drop_runtime_sessions(workspace=slug)
     except Exception:
-        pass
+        logger.warning("drop_runtime_sessions_failed", workspace=slug, exc_info=True)
 
     choices = [w.name for w in list_workspaces()]
     return (

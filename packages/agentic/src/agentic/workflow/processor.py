@@ -1,16 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Callable, Protocol, Sequence
+from typing import Protocol, runtime_checkable
+import uuid
 
-from agentic.workflow.event_store import EventStore, ReadStreamResult, StreamPosition
+from agentic.workflow.errors import ConcurrencyConflictError, IllegalStateError
+from agentic.workflow.event_store import EventStore, StreamPosition
 from agentic.workflow.messages import Message
-
-
-# ---------------------------------------------------------------------------
-# Checkpointing
-# ---------------------------------------------------------------------------
 
 
 class StartFrom(StrEnum):
@@ -24,6 +22,22 @@ class CheckpointStore(Protocol):
     def store(self, processor_id: str, position: StreamPosition) -> None: ...
 
 
+@runtime_checkable
+class CompareAndSwapCheckpointStore(Protocol):
+    def compare_and_store(
+        self,
+        processor_id: str,
+        expected_position: StreamPosition | None,
+        position: StreamPosition,
+    ) -> bool: ...
+
+
+class ProcessorLock(Protocol):
+    def acquire(self, processor_key: str, instance_id: str, lease_seconds: float) -> bool: ...
+    def refresh(self, processor_key: str, instance_id: str, lease_seconds: float) -> bool: ...
+    def release(self, processor_key: str, instance_id: str) -> None: ...
+
+
 class InMemoryCheckpointStore:
     def __init__(self) -> None:
         self._checkpoints: dict[str, StreamPosition] = {}
@@ -34,10 +48,37 @@ class InMemoryCheckpointStore:
     def store(self, processor_id: str, position: StreamPosition) -> None:
         self._checkpoints[processor_id] = position
 
+    def compare_and_store(
+        self,
+        processor_id: str,
+        expected_position: StreamPosition | None,
+        position: StreamPosition,
+    ) -> bool:
+        if self._checkpoints.get(processor_id) != expected_position:
+            return False
+        self._checkpoints[processor_id] = position
+        return True
 
-# ---------------------------------------------------------------------------
-# Message Processor
-# ---------------------------------------------------------------------------
+
+class InMemoryProcessorLock:
+    def __init__(self) -> None:
+        self._owners: dict[str, str] = {}
+
+    def acquire(self, processor_key: str, instance_id: str, lease_seconds: float) -> bool:
+        del lease_seconds
+        owner = self._owners.get(processor_key)
+        if owner is not None and owner != instance_id:
+            return False
+        self._owners[processor_key] = instance_id
+        return True
+
+    def refresh(self, processor_key: str, instance_id: str, lease_seconds: float) -> bool:
+        del lease_seconds
+        return self._owners.get(processor_key) == instance_id
+
+    def release(self, processor_key: str, instance_id: str) -> None:
+        if self._owners.get(processor_key) == instance_id:
+            self._owners.pop(processor_key, None)
 
 
 type BatchHandler = Callable[[Sequence[Message]], None]
@@ -48,21 +89,43 @@ class ProcessorConfig:
     processor_id: str
     start_from: StartFrom = StartFrom.BEGINNING
     batch_size: int = 100
+    version: int = 1
+    partition: str = "default"
+    instance_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    lease_seconds: float = 30.0
+
+    def __post_init__(self) -> None:
+        if not self.processor_id.strip():
+            raise ValueError("processor_id must not be empty")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be positive")
+        if self.version < 1:
+            raise ValueError("processor version must be positive")
+        if not self.partition.strip():
+            raise ValueError("processor partition must not be empty")
+        if self.lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessorStats:
+    processed_messages: int = 0
+    processed_batches: int = 0
+    lag: int = 0
 
 
 @dataclass(slots=True)
 class MessageProcessor:
-    """Processes events from an event store stream with checkpointing.
-
-    Reads events from a named stream, dispatches batches to the handler,
-    and persists the checkpoint after each batch. On restart, resumes
-    from the last checkpoint.
-    """
+    """At-least-once stream/global-feed processor with durable checkpoint fencing."""
 
     config: ProcessorConfig
     handler: BatchHandler
     checkpoint_store: CheckpointStore
+    lock: ProcessorLock | None = None
     _active: bool = field(default=False, init=False)
+    _source: str | None = field(default=None, init=False)
+    _checkpoint_key: str = field(default="", init=False)
+    _stats: ProcessorStats = field(default_factory=ProcessorStats, init=False)
 
     @property
     def processor_id(self) -> str:
@@ -72,38 +135,84 @@ class MessageProcessor:
     def is_active(self) -> bool:
         return self._active
 
-    def start(self, event_store: EventStore, stream_name: str) -> StreamPosition:
-        """Resolve the starting position based on config and checkpoint."""
-        self._active = True
-        position = self._resolve_start_position(event_store, stream_name)
-        if self.checkpoint_store.read(self.config.processor_id) is None:
-            self.checkpoint_store.store(self.config.processor_id, position)
-        return position
+    @property
+    def stats(self) -> ProcessorStats:
+        return self._stats
 
-    def process(self, event_store: EventStore, stream_name: str) -> int:
-        """Read a batch from the stream and process it. Returns count of events processed."""
+    def start(self, event_store: EventStore, stream_name: str | None = None) -> StreamPosition:
+        self._source = stream_name
+        self._checkpoint_key = self._build_checkpoint_key(stream_name)
+        if self.lock is not None and not self.lock.acquire(
+            self._checkpoint_key,
+            self.config.instance_id,
+            self.config.lease_seconds,
+        ):
+            raise IllegalStateError(f"Processor lock is held: {self._checkpoint_key}")
+
+        try:
+            position = self._resolve_start_position(event_store, stream_name)
+            if self.checkpoint_store.read(self._checkpoint_key) is None:
+                self.checkpoint_store.store(self._checkpoint_key, position)
+            self._mirror_legacy_checkpoint(position)
+            self._active = True
+            return position
+        except Exception:
+            if self.lock is not None:
+                self.lock.release(self._checkpoint_key, self.config.instance_id)
+            raise
+
+    def process(self, event_store: EventStore, stream_name: str | None = None) -> int:
         if not self._active:
             return 0
+        self._assert_source(stream_name)
+        from_position = self._read_checkpoint()
+        if from_position is None:
+            from_position = self._resolve_start_position(event_store, stream_name)
 
-        from_position = self._resolve_start_position(event_store, stream_name)
-        result = event_store.read_stream(
-            stream_name,
-            from_position=from_position,
-            max_count=self.config.batch_size,
-        )
+        if stream_name is None:
+            result = event_store.read_all(
+                from_position=from_position,
+                max_count=self.config.batch_size,
+            )
+            events = result.events
+            new_position = result.next_position
+            end_position = result.end_position
+        else:
+            result = event_store.read_stream(
+                stream_name,
+                from_position=from_position,
+                max_count=self.config.batch_size,
+            )
+            events = result.events
+            new_position = from_position + len(events)
+            end_position = result.current_version
 
-        if not result.events:
+        if not events:
+            self._stats = ProcessorStats(
+                processed_messages=self._stats.processed_messages,
+                processed_batches=self._stats.processed_batches,
+                lag=max(end_position - new_position, 0),
+            )
             return 0
 
-        self.handler(result.events)
+        self.handler(events)
+        self._commit_checkpoint(from_position, new_position)
+        if self.lock is not None and not self.lock.refresh(
+            self._checkpoint_key,
+            self.config.instance_id,
+            self.config.lease_seconds,
+        ):
+            self._active = False
+            raise IllegalStateError(f"Processor lease was lost: {self._checkpoint_key}")
 
-        new_position = from_position + len(result.events)
-        self.checkpoint_store.store(self.config.processor_id, new_position)
+        self._stats = ProcessorStats(
+            processed_messages=self._stats.processed_messages + len(events),
+            processed_batches=self._stats.processed_batches + 1,
+            lag=max(end_position - new_position, 0),
+        )
+        return len(events)
 
-        return len(result.events)
-
-    def run_to_end(self, event_store: EventStore, stream_name: str) -> int:
-        """Process all available events in batches until caught up. Returns total processed."""
+    def run_to_end(self, event_store: EventStore, stream_name: str | None = None) -> int:
         total = 0
         while True:
             processed = self.process(event_store, stream_name)
@@ -113,25 +222,59 @@ class MessageProcessor:
         return total
 
     def close(self) -> None:
+        if self.lock is not None and self._checkpoint_key:
+            self.lock.release(self._checkpoint_key, self.config.instance_id)
         self._active = False
 
     def _resolve_start_position(
         self,
         event_store: EventStore,
-        stream_name: str,
+        stream_name: str | None,
     ) -> StreamPosition:
-        checkpoint = self.checkpoint_store.read(self.config.processor_id)
+        existing = self._read_checkpoint()
+        if existing is not None:
+            return existing
+        if self.config.start_from == StartFrom.BEGINNING:
+            return 0
+        if stream_name is None:
+            return event_store.read_all(from_position=0, max_count=0).end_position
+        return event_store.read_stream(stream_name).current_version
 
-        match self.config.start_from:
-            case StartFrom.CURRENT:
-                if checkpoint is not None:
-                    return checkpoint
-                result = event_store.read_stream(stream_name)
-                return result.current_version
-            case StartFrom.BEGINNING:
-                return checkpoint if checkpoint is not None else 0
-            case StartFrom.END:
-                if checkpoint is not None:
-                    return checkpoint
-                result = event_store.read_stream(stream_name)
-                return result.current_version
+    def _read_checkpoint(self) -> StreamPosition | None:
+        if not self._checkpoint_key:
+            return None
+        checkpoint = self.checkpoint_store.read(self._checkpoint_key)
+        if checkpoint is not None:
+            return checkpoint
+        if self.config.version == 1 and self.config.partition == "default":
+            return self.checkpoint_store.read(self.config.processor_id)
+        return None
+
+    def _commit_checkpoint(self, expected: StreamPosition, position: StreamPosition) -> None:
+        if isinstance(self.checkpoint_store, CompareAndSwapCheckpointStore):
+            if not self.checkpoint_store.compare_and_store(
+                self._checkpoint_key,
+                expected,
+                position,
+            ):
+                raise ConcurrencyConflictError(self._checkpoint_key, expected, "changed")
+        else:
+            self.checkpoint_store.store(self._checkpoint_key, position)
+        self._mirror_legacy_checkpoint(position)
+
+    def _mirror_legacy_checkpoint(self, position: StreamPosition) -> None:
+        if self.config.version == 1 and self.config.partition == "default":
+            self.checkpoint_store.store(self.config.processor_id, position)
+
+    def _build_checkpoint_key(self, stream_name: str | None) -> str:
+        source = "$all" if stream_name is None else stream_name
+        return (
+            f"{self.config.processor_id}:v{self.config.version}:"
+            f"p{self.config.partition}:source:{source}"
+        )
+
+    def _assert_source(self, stream_name: str | None) -> None:
+        if stream_name != self._source:
+            raise IllegalStateError(
+                f"Processor started for {self._source!r}, cannot process {stream_name!r}"
+            )

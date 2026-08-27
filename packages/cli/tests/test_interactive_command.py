@@ -41,7 +41,9 @@ def test_launch_textual_chat_reports_missing_textual_dependency(monkeypatch) -> 
 
     monkeypatch.setattr(cli_main, "_load_textual_chat_runner", fake_loader)
 
-    with pytest.raises(click.ClickException, match="Interactive chat requires `textual` and `rich`"):
+    with pytest.raises(
+        click.ClickException, match="Interactive chat requires `textual` and `rich`"
+    ):
         cli_main.launch_textual_chat()
 
 

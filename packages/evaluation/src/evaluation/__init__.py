@@ -3,8 +3,8 @@ from .contracts import (
     EvaluationDefinition,
     Flow,
     Flows,
-    ToolScenario,
     ToolResultSimulator,
+    ToolScenario,
     render_tool_call,
 )
 from .definition_loader import load_evaluation_definition, normalize_definition_spec
@@ -17,11 +17,6 @@ from .eval_dataset import (
     build_goldens_from_scenarios,
     build_prompt_optimization_goldens,
 )
-from .notes_prompt_optimization_miprov2 import (
-    AgentPromptOptimization,
-    optimize_prompt_text,
-)
-from .prompt_optimization import parse_scenarios_json, serialize_scenarios_to_json
 from .mlflow_bridge import (
     DatasetSyncResult,
     MLflowEvaluationSummary,
@@ -33,6 +28,11 @@ from .mlflow_bridge import (
     sync_mlflow_dataset,
     write_evaluation_summary,
 )
+from .notes_prompt_optimization_miprov2 import (
+    AgentPromptOptimization,
+    optimize_prompt_text,
+)
+from .prompt_optimization import parse_scenarios_json, serialize_scenarios_to_json
 
 __all__ = [
     "AgentEvalCallback",
@@ -46,8 +46,8 @@ __all__ = [
     "MLflowEvaluationSummary",
     "ToolResultSimulator",
     "ToolScenario",
-    "build_conversation_examples",
     "build_conversation_dataset_records",
+    "build_conversation_examples",
     "build_conversation_scenarios",
     "build_goldens_from_flows",
     "build_goldens_from_scenarios",

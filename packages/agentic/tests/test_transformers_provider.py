@@ -1,11 +1,8 @@
-from types import SimpleNamespace
-
 import pytest
 
 from providers.models import ModelConfig
 from providers.models.response import ModelResponse
 from providers.orchestrator import ModelProvider
-
 
 # ── Stubs ─────────────────────────────────────────────────────────────────────
 
@@ -15,7 +12,7 @@ class StubTensor:
         self._data = data
         self.shape = (len(data), len(data[0]))
 
-    def __getitem__(self, key: object) -> "StubTensor":
+    def __getitem__(self, key: object) -> StubTensor:
         return StubTensor([[10, 20, 30]])
 
 
@@ -32,7 +29,7 @@ class StubTokenizerOutput(dict[str, StubTensor]):
     def input_ids(self) -> StubTensor:
         return self["input_ids"]
 
-    def to(self, device: str) -> "StubTokenizerOutput":
+    def to(self, device: str) -> StubTokenizerOutput:
         return self
 
 
@@ -54,9 +51,7 @@ class StubTokenizer:
     ) -> str:
         return "<|user|> Hello <|assistant|>"
 
-    def batch_decode(
-        self, token_ids: object, skip_special_tokens: bool = True
-    ) -> list[str]:
+    def batch_decode(self, token_ids: object, skip_special_tokens: bool = True) -> list[str]:
         return ["generated text output"]
 
 
@@ -75,7 +70,9 @@ class StubTransformersProvider:
         return StubModel(), StubTokenizer()
 
     @classmethod
-    def build_model(cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object) -> object:
+    def build_model(
+        cls, backend: object, model_name: str, config: ModelConfig, **kwargs: object
+    ) -> object:
         from providers.transformers.transformers_model import TransformersModel
 
         return TransformersModel(backend, model_name, config=config)
@@ -119,10 +116,12 @@ def test_transformers_model_response_with_messages() -> None:
 
     backend = (StubModel(), StubTokenizer())
     model = TransformersModel(backend, "test-model")
-    resp = model.response([
-        {"role": "system", "content": "You are helpful."},
-        {"role": "user", "content": "Hello!"},
-    ])
+    resp = model.response(
+        [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Hello!"},
+        ]
+    )
     assert isinstance(resp, ModelResponse)
     assert resp.text == "generated text output"
 

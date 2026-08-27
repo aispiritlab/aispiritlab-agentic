@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,7 +32,10 @@ class TestInferenceServer:
         mock_process = _make_mock_process()
 
         with (
-            patch("providers.server._process.asyncio.create_subprocess_exec", return_value=mock_process),
+            patch(
+                "providers.server._process.asyncio.create_subprocess_exec",
+                return_value=mock_process,
+            ),
             patch("providers.server.wait_for_healthy", new_callable=AsyncMock),
         ):
             server = InferenceServer(binary, config, settings)
@@ -56,7 +58,10 @@ class TestInferenceServer:
         mock_process = _make_mock_process()
 
         with (
-            patch("providers.server._process.asyncio.create_subprocess_exec", return_value=mock_process),
+            patch(
+                "providers.server._process.asyncio.create_subprocess_exec",
+                return_value=mock_process,
+            ),
             patch("providers.server.wait_for_healthy", new_callable=AsyncMock),
         ):
             async with InferenceServer(binary, config, settings) as server:
@@ -65,7 +70,9 @@ class TestInferenceServer:
                 mock_process.returncode = 0
 
     async def test_auto_port_allocation(self, tmp_path: Path) -> None:
-        settings = ProviderSettings(bin_dir=tmp_path, default_port=49510, server_startup_timeout=2.0)
+        settings = ProviderSettings(
+            bin_dir=tmp_path, default_port=49510, server_startup_timeout=2.0
+        )
         config = ServerConfig(model_path="model.gguf")
         binary = tmp_path / "llama-server"
         binary.touch()
@@ -73,7 +80,10 @@ class TestInferenceServer:
         mock_process = _make_mock_process()
 
         with (
-            patch("providers.server._process.asyncio.create_subprocess_exec", return_value=mock_process),
+            patch(
+                "providers.server._process.asyncio.create_subprocess_exec",
+                return_value=mock_process,
+            ),
             patch("providers.server.wait_for_healthy", new_callable=AsyncMock),
         ):
             server = InferenceServer(binary, config, settings)
@@ -91,7 +101,10 @@ class TestInferenceServer:
         mock_process = _make_mock_process(pid=99999)
 
         with (
-            patch("providers.server._process.asyncio.create_subprocess_exec", return_value=mock_process),
+            patch(
+                "providers.server._process.asyncio.create_subprocess_exec",
+                return_value=mock_process,
+            ),
             patch("providers.server.wait_for_healthy", new_callable=AsyncMock),
         ):
             server = InferenceServer(binary, config, settings)
@@ -114,8 +127,15 @@ class TestInferenceServer:
         mock_process = _make_mock_process(pid=54321)
 
         with (
-            patch("providers.server._process.asyncio.create_subprocess_exec", return_value=mock_process),
-            patch("providers.server.wait_for_healthy", new_callable=AsyncMock, side_effect=RuntimeError("boom")),
+            patch(
+                "providers.server._process.asyncio.create_subprocess_exec",
+                return_value=mock_process,
+            ),
+            patch(
+                "providers.server.wait_for_healthy",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             server = InferenceServer(binary, config, settings)
             with pytest.raises(RuntimeError, match="boom"):

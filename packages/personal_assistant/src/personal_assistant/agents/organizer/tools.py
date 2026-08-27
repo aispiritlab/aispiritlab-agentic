@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from agentic import git_tracer
-from agentic.tools import Toolset
 import orjson
 import yaml
+
+from agentic import git_tracer
+from agentic.tools import Toolset
 
 from ..manage_notes.tools import (
     _get_vault_config,

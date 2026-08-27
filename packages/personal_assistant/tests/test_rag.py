@@ -1,5 +1,5 @@
-from personal_assistant.rag import build_context
 from knowledge_base.documents import Document
+from personal_assistant.rag import build_context
 
 
 def test_build_context_uses_note_name_from_source_path() -> None:

@@ -6,21 +6,31 @@ from dataclasses import dataclass
 import json
 import re
 
-from agentic.integrations.search_provider import LangSearchProvider, SearchProvider, normalize_results
+from agentic.integrations.search_provider import (
+    LangSearchProvider,
+    SearchProvider,
+    normalize_results,
+)
 from agentic.llm_call import LLMCall
 from agentic.workflow.messages import ConversationData, RecordedMessageMetadata
-from providers.api import OpenAIProvider
 from agentic_runtime.distributed import AgenticServiceDiscovery
 from agentic_runtime.distributed.service import DistributedService
-from agentic_runtime.messaging.messages import AssistantMessage, Message, TurnCompleted, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    Message,
+    TurnCompleted,
+    UserMessage,
+)
 from agentic_runtime.settings import settings
+from providers.api import OpenAIProvider
+from workshops.settings import settings as workshop_settings
 
-from .messages import SearchPlanned, SummaryRequested
+from .messages import SearchPlanned, SearchRequested, SearchResultsFetched, SummaryRequested
 
 _PLANNER_PROMPT = (
     "You are the planner agent in a distributed research system.\n"
     "Rewrite the user's request into 1 to 3 focused web-search queries.\n"
-    "Return strict JSON only in the format {\"queries\": [\"...\"]}.\n"
+    'Return strict JSON only in the format {"queries": ["..."]}.\n'
     "Do not include commentary, markdown, or code fences."
 )
 _SUMMARY_PROMPT = (
@@ -105,9 +115,7 @@ def _parse_queries(text: str, fallback: str) -> tuple[str, ...]:
         queries = payload.get("queries")
         if isinstance(queries, list):
             resolved = tuple(
-                query.strip()
-                for query in (str(item) for item in queries)
-                if query.strip()
+                query.strip() for query in (str(item) for item in queries) if query.strip()
             )
             if resolved:
                 return resolved[:3]
@@ -146,9 +154,9 @@ class Lab6Summary:
     def summarize(self, question: str, results: Sequence[dict[str, object]]) -> str:
         compacted_results = _compact_results_for_summary(
             results,
-            max_results=settings.lab6_summary_max_results,
-            snippet_chars=settings.lab6_summary_snippet_chars,
-            total_chars=settings.lab6_summary_total_chars,
+            max_results=workshop_settings.lab6_summary_max_results,
+            snippet_chars=workshop_settings.lab6_summary_snippet_chars,
+            total_chars=workshop_settings.lab6_summary_total_chars,
         )
         if not compacted_results:
             return "Nie znalazłem wystarczających wyników, aby przygotować odpowiedź."
@@ -203,6 +211,19 @@ class PlannerHandler:
                     turn_id=message.metadata.turn_id,
                     domain=message.metadata.domain or "lab6",
                     source="planner",
+                    trace=message.metadata.trace,
+                ),
+            ),
+            SearchRequested(
+                question=question,
+                queries=queries,
+                reply_target=message.metadata.source or "chat",
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain or "lab6",
+                    source="planner",
                     target=search_agent.agent_name,
                     trace=message.metadata.trace,
                 ),
@@ -223,7 +244,7 @@ class SearchHandler:
         message: Message,
         discovery: AgenticServiceDiscovery,
     ) -> Sequence[Message]:
-        if not isinstance(message, SearchPlanned):
+        if not isinstance(message, SearchRequested):
             return ()
 
         summary_agent = discovery.find("summarize")
@@ -240,11 +261,25 @@ class SearchHandler:
         normalized = tuple(deduped.values())
         compacted = _compact_results_for_summary(
             normalized,
-            max_results=settings.lab6_summary_max_results,
-            snippet_chars=settings.lab6_summary_snippet_chars,
-            total_chars=settings.lab6_summary_total_chars,
+            max_results=workshop_settings.lab6_summary_max_results,
+            snippet_chars=workshop_settings.lab6_summary_snippet_chars,
+            total_chars=workshop_settings.lab6_summary_total_chars,
         )
         return (
+            SearchResultsFetched(
+                question=message.question,
+                queries=message.queries,
+                results=compacted,
+                reply_target=message.reply_target,
+                metadata=RecordedMessageMetadata(
+                    runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
+                    turn_id=message.metadata.turn_id,
+                    domain=message.metadata.domain,
+                    source="search",
+                    trace=message.metadata.trace,
+                ),
+            ),
             SummaryRequested(
                 question=message.question,
                 queries=message.queries,
@@ -331,13 +366,13 @@ def build_lab6_service(
         close_hook = handler.close
     elif resolved_name == "search":
         provider = LangSearchProvider(
-            api_key=settings.langsearch_api_key or "",
-            base_url=settings.langsearch_base_url,
-            timeout=settings.langsearch_timeout,
+            api_key=workshop_settings.langsearch_api_key or "",
+            base_url=workshop_settings.langsearch_base_url,
+            timeout=workshop_settings.langsearch_timeout,
         )
         handler = SearchHandler(
             search_provider=provider,
-            results_per_query=settings.lab6_search_results_per_query,
+            results_per_query=workshop_settings.lab6_search_results_per_query,
         )
         capabilities = ("web-search", "langsearch")
         close_hook = handler.close

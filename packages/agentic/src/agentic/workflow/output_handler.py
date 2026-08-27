@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import cast
 
 from agentic.workflow.messages import Message
 
@@ -76,25 +77,38 @@ class OutputHandlerDispatcher:
         self._pending_batches.clear()
 
 
-def workflow_output_handler(
+def workflow_output_handler[M: Message](
     *,
-    can_handle: tuple[type[Message], ...],
-    each_message: Callable[[Message], str | None] | None = None,
-    each_batch: Callable[[list[Message]], list[str | None]] | None = None,
+    can_handle: tuple[type[M], ...],
+    each_message: Callable[[M], str | None] | None = None,
+    each_batch: Callable[[list[M]], list[str | None]] | None = None,
     batch_size: int = 10,
     name: str = "",
 ) -> WorkflowOutputHandler:
-    """Factory that enforces exactly one strategy."""
+    """Factory that enforces exactly one strategy.
+
+    Generic over the handled message type: a handler is only ever invoked with
+    instances of the classes listed in ``can_handle``, so it may accept a
+    narrower type than ``Message``.
+    """
     if each_message is not None and each_batch is not None:
         raise ValueError("Specify either each_message or each_batch, not both")
     if each_message is None and each_batch is None:
         raise ValueError("Specify either each_message or each_batch")
 
+    # The cast is what `can_handle` guarantees: dispatch only ever passes an
+    # instance of one of those classes to the handler.
     if each_message is not None:
-        strategy: OutputStrategy = EachMessageHandler(handle=each_message)
-    else:
-        assert each_batch is not None
-        strategy = EachBatchHandler(handle=each_batch, batch_size=batch_size)
+        strategy: OutputStrategy = EachMessageHandler(
+            handle=cast(Callable[[Message], str | None], each_message)
+        )
+    elif each_batch is not None:
+        strategy = EachBatchHandler(
+            handle=cast(Callable[[list[Message]], list[str | None]], each_batch),
+            batch_size=batch_size,
+        )
+    else:  # pragma: no cover - guarded above
+        raise ValueError("Specify either each_message or each_batch")
 
     return WorkflowOutputHandler(
         can_handle=can_handle,

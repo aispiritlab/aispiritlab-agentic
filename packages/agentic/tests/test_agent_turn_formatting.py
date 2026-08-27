@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 
 from agentic.agent import Agent
-from agentic.message import SystemMessage, ToolMessage
-from providers.models.response import ModelResponse
+from agentic.message import AssistantMessage, ToolMessage
 from agentic.prompts import GemmaPromptBuilder
 from agentic.tools import Toolset, Toolsets
+from providers.models.response import ModelResponse
 
 
 class FakeModel:
@@ -56,7 +56,9 @@ def test_tool_message_uses_valid_closing_tag() -> None:
 
 
 def test_agent_keeps_user_turn_separate_after_tool_call() -> None:
-    first_response = '{"name":"add_note","parameters":{"note_name":"marara","note":"tresci marara"}}'
+    first_response = (
+        '{"name":"add_note","parameters":{"note_name":"marara","note":"tresci marara"}}'
+    )
     second_response = '{"name":"get_note","parameters":{"note_name":"marara"}}'
     model = FakeModel([first_response, second_response])
     agent = Agent(
@@ -64,7 +66,7 @@ def test_agent_keeps_user_turn_separate_after_tool_call() -> None:
         prompt_builder=GemmaPromptBuilder(system_prompt="SYSTEM"),
         toolsets=Toolsets([Toolset([add_note, get_note])]),
     )
-    agent.history.add(SystemMessage("Cześć!"))
+    agent.history.add(AssistantMessage("Cześć!"))
 
     first = agent.run("Dodaj notatke marara o tresci marara")
     assert len(first.tool_calls) == 1
@@ -83,8 +85,8 @@ def test_agent_keeps_user_turn_separate_after_tool_call() -> None:
     assert "<tool_call_response>" not in prompt
 
 
-def test_agent_keeps_staged_memory_context_outside_rendered_prompt() -> None:
-    memory = FakeMemory("future memory summary")
+def test_agent_renders_memory_context_before_history() -> None:
+    memory = FakeMemory("remembered vault: MyVault")
     agent = Agent(
         model_provider=FakeProvider(FakeModel(["unused"])),
         prompt_builder=GemmaPromptBuilder(system_prompt="SYSTEM"),
@@ -96,11 +98,25 @@ def test_agent_keeps_staged_memory_context_outside_rendered_prompt() -> None:
     prompt = agent._build_prompt(prompt_context)
 
     assert memory.summary_calls == 1
-    assert prompt_context.memory_context == "future memory summary"
-    assert "future memory summary" not in prompt
+    assert prompt_context.memory_context == "remembered vault: MyVault"
+    assert "remembered vault: MyVault" in prompt
+    rendered = str(prompt)
+    assert rendered.index("remembered vault: MyVault") < rendered.index("Wczesniejsze pytanie")
     assert "<start_of_turn>user\nWczesniejsze pytanie\n<end_of_turn>" in prompt
     assert "<start_of_turn>model\nWczesniejsza odpowiedz\n<end_of_turn>" in prompt
     assert "<start_of_turn>user\nAktualne pytanie\n<end_of_turn>" in prompt
+
+
+def test_agent_omits_memory_turn_when_memory_is_empty() -> None:
+    agent = Agent(
+        model_provider=FakeProvider(FakeModel(["unused"])),
+        prompt_builder=GemmaPromptBuilder(system_prompt="SYSTEM"),
+        memory=FakeMemory(""),
+    )
+
+    prompt = agent._build_prompt(agent._gather_context("Pytanie", agent.context))
+
+    assert "Remembered context" not in str(prompt)
 
 
 def test_agent_renders_tool_message_as_tool_turn_and_stores_it_in_history() -> None:

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from agentic.core_agent import CoreAgentic
-from providers.models import ModelConfig
 from agentic.prompts import QwenPromptBuilder
 from agentic.specialized_agents import PlannerAgent, TaskCompleted
 from agentic.workflow import (
     LLMReactor,
-    UserMessage,
     make_llm_routing,
+    reply_metadata,
     run_workflow,
+    user_message,
 )
-
+from providers.models import ModelConfig
 from workshops.tui import LabApp
 
 from .deciders import worker_decider
@@ -22,7 +24,7 @@ MODEL_ID = "Qwen/Qwen3.5-2B"
 class Lab2App(LabApp):
     lab_title = "Lab 2 — Planner: Plan & Delegate"
     lab_subtitle = "Multi-agent task delegation"
-    lab_info = [
+    lab_info: ClassVar[list[str]] = [
         f"Model: {MODEL_ID} (local, MLX)",
         "",
         "Agents: Planner, Researcher, Writer",
@@ -44,8 +46,7 @@ class Lab2App(LabApp):
         self._planner = planner
         self._agents = agents
         self._worker_routings = {
-            name: make_llm_routing(LLMReactor(agent=agent))
-            for name, agent in agents.items()
+            name: make_llm_routing(LLMReactor(agent=agent)) for name, agent in agents.items()
         }
 
     def handle_input(self, message: str, *, attached_file: str | None = None) -> None:
@@ -61,7 +62,8 @@ class Lab2App(LabApp):
         for i, task in enumerate(tasks, 1):
             plan_lines.append(f"{i}. **{task.target_agent}** → {task.task_description}")
             self.write_activity(
-                f"Step {i}", f"{task.target_agent}: {task.task_description[:50]}",
+                f"Step {i}",
+                f"{task.target_agent}: {task.task_description[:50]}",
                 style="#ff9e64",
             )
         self.write_agent("Planner", "\n".join(plan_lines))
@@ -77,7 +79,7 @@ class Lab2App(LabApp):
             self.set_status(f"Running {agent_name}...")
             self.write_activity(agent_name.title(), "Working...", style="#bb9af7")
             worker_result = run_workflow(
-                message=UserMessage(text=task.task_description, source="planner"),
+                message=user_message(task.task_description, source="planner", reply_to=task),
                 decider=worker_decider,
                 routing_fn=routing,
             )
@@ -86,10 +88,10 @@ class Lab2App(LabApp):
 
             completed.append(
                 TaskCompleted(
-                    source=agent_name,
                     target_agent=agent_name,
                     task_description=task.task_description,
                     result=worker_result.text,
+                    metadata=reply_metadata(task, source=agent_name),
                 )
             )
 

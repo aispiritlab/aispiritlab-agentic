@@ -4,7 +4,6 @@ import importlib
 
 from evaluation.contracts import EvaluationDefinition
 
-
 _DEFINITION_ALIASES = {
     "agentic_runtime.manage_notes.evaluation:NOTES_EVALUATION": (
         "personal_assistant.agents.manage_notes.evaluation:NOTES_EVALUATION"

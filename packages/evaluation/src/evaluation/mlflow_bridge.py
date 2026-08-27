@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import mlflow
-import pandas as pd
 from mlflow.entities import Session, Trace
 from mlflow.genai.scorers import scorer
+import pandas as pd
 
 from agentic_runtime.fine_tuning import export_agent_fine_tuning_rows
 from agentic_runtime.trace import get_experiment_id
@@ -162,9 +162,7 @@ def sync_dataset_from_definition(
     if normalized_source in {"hybrid", "synthetic"}:
         records.extend(build_conversation_dataset_records(definition, limit=limit))
     if normalized_source in {"hybrid", "traces"} and store_path is not None:
-        records.extend(
-            build_trace_dataset_records(store_path, runtime_id=runtime_id, limit=limit)
-        )
+        records.extend(build_trace_dataset_records(store_path, runtime_id=runtime_id, limit=limit))
 
     return sync_mlflow_dataset(
         dataset_name=dataset_name,

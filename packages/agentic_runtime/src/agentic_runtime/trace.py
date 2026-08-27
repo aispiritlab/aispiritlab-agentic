@@ -1,10 +1,10 @@
-import os
-import threading
 from pathlib import Path
+import threading
 from uuid import uuid4
 
-from agentic.observability import LLMTracer, build_tracer
 import mlflow
+
+from agentic.observability import LLMTracer, build_tracer
 from core import settings as core_settings
 
 _LOCK = threading.Lock()
@@ -14,16 +14,14 @@ _EXPERIMENT_ID: str | None = None
 
 
 def get_tracking_uri() -> str:
-    return os.getenv("MLFLOW_TRACKING_URI", core_settings.mlflow_registry_uri)
+    # Settings already read MLFLOW_TRACKING_URI from the environment or .env.
+    return core_settings.mlflow_tracking_uri
 
 
 def get_experiment_name(*, evaluation: bool = False) -> str:
     if evaluation:
-        return os.getenv(
-            "MLFLOW_EVALUATION_EXPERIMENT_NAME",
-            core_settings.mlflow_evaluation_experiment_name,
-        )
-    return os.getenv("MLFLOW_EXPERIMENT_NAME", core_settings.mlflow_experiment_name)
+        return core_settings.mlflow_evaluation_experiment_name
+    return core_settings.mlflow_experiment_name
 
 
 def ensure_experiment(*, evaluation: bool = False) -> str | None:

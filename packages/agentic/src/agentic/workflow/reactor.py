@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol, Sequence
+import json
+from typing import Any, Protocol
 
 from agentic.core_agent import CoreAgentic
 from agentic.message import ToolMessage
 from agentic.usage import UNLIMITED, RunUsage, UsageLimits
-
-from agentic.workflow.messages import AssistantMessage, ConversationData, Message, RecordedMessageMetadata
+from agentic.workflow.messages import (
+    AssistantMessage,
+    ConversationData,
+    Message,
+    RecordedMessageMetadata,
+)
 
 
 class Reactor(Protocol):
@@ -47,10 +52,18 @@ class LLMReactor:
         self._agent = agent
 
     def can_handle(self, command: Message) -> bool:
-        return isinstance(command.data, ConversationData) and command.data.text is not None and len(command.data.text) > 0
+        return (
+            isinstance(command.data, ConversationData)
+            and command.data.text is not None
+            and len(command.data.text) > 0
+        )
 
     def invoke(self, command: Message) -> Message:
-        text = command.data.text if isinstance(command.data, ConversationData) and command.data.text else ""
+        text = (
+            command.data.text
+            if isinstance(command.data, ConversationData) and command.data.text
+            else ""
+        )
         response = self._agent.respond(text)
         tool_calls = tuple(response.result.tool_calls) if response.result.tool_calls else ()
         return LLMResponse(
@@ -96,14 +109,22 @@ class MultiTurnLLMReactor:
         self._run_usage = RunUsage()
 
     def can_handle(self, command: Message) -> bool:
-        return isinstance(command.data, ConversationData) and command.data.text is not None and len(command.data.text) > 0
+        return (
+            isinstance(command.data, ConversationData)
+            and command.data.text is not None
+            and len(command.data.text) > 0
+        )
 
     @property
     def run_usage(self) -> RunUsage:
         return self._run_usage
 
     def invoke(self, command: Message) -> Message:
-        text = command.data.text if isinstance(command.data, ConversationData) and command.data.text else ""
+        text = (
+            command.data.text
+            if isinstance(command.data, ConversationData) and command.data.text
+            else ""
+        )
         self._run_usage = RunUsage()
         self._usage_limits.check_before_request(self._run_usage)
         response = self._agent.respond(text)

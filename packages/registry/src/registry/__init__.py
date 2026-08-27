@@ -1,9 +1,8 @@
+from .prompts import Prompts, get_prompt
 from .register_prompt import RegisterPrompt
-from .prompts import Prompts
-from .prompts import get_prompt
 
 __all__ = [
-    "RegisterPrompt",
     "Prompts",
+    "RegisterPrompt",
     "get_prompt",
 ]

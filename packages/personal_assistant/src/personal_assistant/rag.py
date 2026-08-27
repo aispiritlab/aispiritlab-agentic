@@ -1,9 +1,9 @@
 from pathlib import Path
 import re
 from typing import Any
+
 from knowledge_base import get_knowledge_base
 from knowledge_base.documents import Document
-
 
 _CHUNK_SUFFIX_PATTERN = re.compile(r"\s+chunk=\d+\s*$", re.IGNORECASE)
 

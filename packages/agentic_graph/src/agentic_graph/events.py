@@ -13,7 +13,9 @@ def _metadata_with_updates(
     metadata: RecordedMessageMetadata,
     **updates: Any,
 ) -> RecordedMessageMetadata:
-    values = {field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)}
+    values = {
+        field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)
+    }
     values.update(updates)
     return RecordedMessageMetadata(**values)
 

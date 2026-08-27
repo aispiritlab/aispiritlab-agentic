@@ -116,17 +116,13 @@ def build_goldens_from_flows(
         for step_name in flow.steps:
             scenario = scenario_by_name.get(step_name)
             if scenario is None:
-                raise ValueError(
-                    f"Flow '{flow.name}' contains unknown scenario: {step_name!r}."
-                )
+                raise ValueError(f"Flow '{flow.name}' contains unknown scenario: {step_name!r}.")
             prefill_messages = _normalize_messages([*history, *scenario.prefill_messages])
             goldens.append(
                 Golden(
                     input=scenario.user_message,
                     expected_output=scenario.resolved_expected_output(),
-                    additional_metadata={
-                        "prefill_messages": prefill_messages
-                    }
+                    additional_metadata={"prefill_messages": prefill_messages}
                     if prefill_messages
                     else None,
                 )
@@ -161,8 +157,7 @@ def build_conversation_scenarios(
         if name in seen_names:
             return
         steps = tuple(
-            _build_step(scenario_by_name[scenario_name])
-            for scenario_name in scenario_names
+            _build_step(scenario_by_name[scenario_name]) for scenario_name in scenario_names
         )
         conversations.append(
             ConversationScenario(
@@ -236,9 +231,7 @@ def _build_metadata(scenario: ToolScenario) -> dict[str, Any] | None:
 
 def _normalize_messages(messages: Iterable[str]) -> list[str]:
     return [
-        message.strip()
-        for message in messages
-        if isinstance(message, str) and message.strip()
+        message.strip() for message in messages if isinstance(message, str) and message.strip()
     ]
 
 

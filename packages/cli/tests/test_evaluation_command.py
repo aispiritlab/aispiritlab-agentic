@@ -4,8 +4,8 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-import evaluation
 from cli.main import cli
+import evaluation
 
 
 def test_evaluation_optimize_prompt_command_uses_definition(monkeypatch) -> None:

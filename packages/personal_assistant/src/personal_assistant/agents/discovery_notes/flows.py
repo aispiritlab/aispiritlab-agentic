@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from evaluation import Flow, Flows
 
-
 DEFAULT_DISCOVERY_NOTE_FLOWS = Flows(
     Flow(
         name="flow::discovery_rag_embeddings_obsidian",

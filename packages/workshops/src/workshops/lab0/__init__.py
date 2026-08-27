@@ -1,9 +1,10 @@
+from typing import ClassVar
+
 from agentic.agent import Agent, AgentResult
-from providers.models import ModelConfig
-from providers.orchestrator import ModelProvider
 from agentic.prompts import QwenPromptBuilder
 from agentic.tools import Toolset, Toolsets
-
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProvider
 from workshops.lab0.prompt import SYSTEM_PROMPT
 from workshops.lab0.tools import calculate, get_current_time, roll_dice
 from workshops.tui import LabApp
@@ -14,7 +15,7 @@ MODEL_ID = "Qwen/Qwen3.5-2B"
 class Lab0App(LabApp):
     lab_title = "Lab 0 — Simple Agent with Tools"
     lab_subtitle = "Agent + Toolset basics"
-    lab_info = [
+    lab_info: ClassVar[list[str]] = [
         f"Model: {MODEL_ID} (local, MLX)",
         "Tools: get_current_time, calculate, roll_dice",
         "",
@@ -22,7 +23,10 @@ class Lab0App(LabApp):
     ]
 
     def __init__(
-        self, *, agent: Agent, model_provider: ModelProvider,
+        self,
+        *,
+        agent: Agent,
+        model_provider: ModelProvider,
     ) -> None:
         super().__init__()
         self._agent = agent
@@ -51,7 +55,9 @@ class Lab0App(LabApp):
     def _render_result(self, result: AgentResult) -> None:
         if result.reasoning:
             self.write_activity(
-                "Reasoning", result.reasoning[:80] + "...", style="#ff9e64",
+                "Reasoning",
+                result.reasoning[:80] + "...",
+                style="#ff9e64",
             )
 
         if result.tool_calls:
@@ -71,7 +77,9 @@ class Lab0App(LabApp):
             latency = result.usage.get("latency_ms", "?")
             tokens = result.usage.get("total_tokens", "?")
             self.write_activity(
-                "Usage", f"{latency}ms, {tokens} tokens", style="#565f89",
+                "Usage",
+                f"{latency}ms, {tokens} tokens",
+                style="#565f89",
             )
 
     def cleanup(self) -> None:

@@ -6,11 +6,11 @@ from pathlib import Path
 import re
 import subprocess
 
+import orjson
 from structlog import get_logger
 
 from agentic import git_tracer
 from agentic.tools import Tool, Toolset
-import orjson
 
 from .commands import AddNoteCommand, EditNoteCommand, GetNoteCommand, ListNotesCommand
 
@@ -87,10 +87,7 @@ def _get_vault_path() -> Path | None:
 
 
 def _missing_vault_configuration_message() -> str:
-    return (
-        "Brak skonfigurowanego vaulta. "
-        "Ustaw przynajmniej nazwę vaulta Obsidian (vault_name)."
-    )
+    return "Brak skonfigurowanego vaulta. Ustaw przynajmniej nazwę vaulta Obsidian (vault_name)."
 
 
 def _looks_like_missing_note_error(error_message: str) -> bool:
@@ -115,8 +112,10 @@ def _run_obsidian_command(vault_name: str, command: str, *arguments: str) -> tup
     except FileNotFoundError:
         return (
             False,
-            "Nie znaleziono polecenia 'obsidian'. "
-            "Zainstaluj Obsidian CLI albo ustaw zmienną OBSIDIAN_CLI_BIN.",
+            (
+                "Nie znaleziono polecenia 'obsidian'. "
+                "Zainstaluj Obsidian CLI albo ustaw zmienną OBSIDIAN_CLI_BIN."
+            ),
         )
 
     stdout = process.stdout.strip()
@@ -353,9 +352,11 @@ def list_notes() -> str:
     return _missing_vault_configuration_message()
 
 
-toolset = Toolset([
-    Tool(add_note, command=AddNoteCommand),
-    Tool(edit_note, command=EditNoteCommand),
-    Tool(get_note, command=GetNoteCommand),
-    Tool(list_notes, command=ListNotesCommand),
-])
+toolset = Toolset(
+    [
+        Tool(add_note, command=AddNoteCommand),
+        Tool(edit_note, command=EditNoteCommand),
+        Tool(get_note, command=GetNoteCommand),
+        Tool(list_notes, command=ListNotesCommand),
+    ]
+)

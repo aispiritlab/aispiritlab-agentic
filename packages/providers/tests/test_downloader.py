@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import io
-import tarfile
 from pathlib import Path
+import tarfile
 
 import httpx
 import pytest
@@ -18,7 +18,9 @@ from providers.loader._downloader import (
 from providers.loader._github_release import ReleaseAsset
 
 
-def _create_tar_gz_with_binary(binary_name: str = "llama-server", content: bytes = b"fake-binary") -> bytes:
+def _create_tar_gz_with_binary(
+    binary_name: str = "llama-server", content: bytes = b"fake-binary"
+) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:
         info = tarfile.TarInfo(name=f"bin/{binary_name}")

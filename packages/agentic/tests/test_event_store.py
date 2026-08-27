@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from agentic.workflow.errors import DuplicateMessageError
 from agentic.workflow.event_store import (
     NO_CONCURRENCY_CHECK,
     STREAM_DOES_NOT_EXIST,
@@ -9,7 +10,7 @@ from agentic.workflow.event_store import (
     ConcurrencyConflictError,
     InMemoryEventStore,
 )
-from agentic.workflow.messages import Event
+from agentic.workflow.messages import Event, RecordedMessageMetadata
 
 
 def _event(event_type: str, **data: object) -> Event:
@@ -45,6 +46,23 @@ class TestReadStream:
         assert result.events[0].type == "b"
         assert result.events[1].type == "c"
 
+
+class TestReadAll:
+    def test_reads_global_feed_and_filters_by_stream_prefix(self) -> None:
+        store = InMemoryEventStore()
+        store.append_to_stream("research:one", (_event("one"),))
+        store.append_to_stream("orders:one", (_event("two"),))
+        store.append_to_stream("research:two", (_event("three"),))
+
+        all_events = store.read_all(from_position=0, max_count=2)
+        research = store.read_all(stream_prefix="research:")
+
+        assert [event.type for event in all_events.events] == ["one", "two"]
+        assert all_events.next_position == 2
+        assert all_events.end_position == 3
+        assert [event.type for event in research.events] == ["one", "three"]
+        assert research.next_position == 3
+
     def test_limits_by_max_count(self) -> None:
         store = InMemoryEventStore()
         store.append_to_stream("cart-1", [_event("a"), _event("b"), _event("c")])
@@ -67,10 +85,13 @@ class TestReadStream:
 class TestAggregateStream:
     def test_folds_events_into_state(self) -> None:
         store = InMemoryEventStore()
-        store.append_to_stream("cart-1", [
-            _event("item_added", item="shoes", qty=2),
-            _event("item_added", item="hat", qty=1),
-        ])
+        store.append_to_stream(
+            "cart-1",
+            [
+                _event("item_added", item="shoes", qty=2),
+                _event("item_added", item="hat", qty=1),
+            ],
+        )
 
         def evolve(state: dict[str, int], event: Event) -> dict[str, int]:
             if event.type == "item_added":
@@ -102,11 +123,14 @@ class TestAggregateStream:
 
     def test_aggregates_from_position(self) -> None:
         store = InMemoryEventStore()
-        store.append_to_stream("counter-1", [
-            _event("incremented"),
-            _event("incremented"),
-            _event("incremented"),
-        ])
+        store.append_to_stream(
+            "counter-1",
+            [
+                _event("incremented"),
+                _event("incremented"),
+                _event("incremented"),
+            ],
+        )
 
         result = store.aggregate_stream(
             "counter-1",
@@ -148,6 +172,54 @@ class TestAppendToStream:
         assert store.read_stream("cart-1").events[0].type == "a"
         assert store.read_stream("cart-2").events[0].type == "b"
 
+    def test_same_logical_message_can_have_distinct_transport_records(self) -> None:
+        store = InMemoryEventStore()
+        records = [
+            Event(
+                type="message_started",
+                metadata=RecordedMessageMetadata(
+                    message_id="logical-1",
+                    event_id="event-1",
+                    idempotency_key="logical-1:started",
+                ),
+            ),
+            Event(
+                type="message_chunk",
+                metadata=RecordedMessageMetadata(
+                    message_id="logical-1",
+                    event_id="event-2",
+                    idempotency_key="logical-1:chunk:0",
+                ),
+            ),
+        ]
+
+        store.append_to_stream("messages", records)
+
+        assert len(store.read_stream("messages").events) == 2
+
+    def test_rejects_duplicate_idempotency_key(self) -> None:
+        store = InMemoryEventStore()
+        first = Event(
+            type="requested",
+            metadata=RecordedMessageMetadata(
+                message_id="logical-1",
+                event_id="event-1",
+                idempotency_key="request-1",
+            ),
+        )
+        duplicate = Event(
+            type="requested",
+            metadata=RecordedMessageMetadata(
+                message_id="logical-2",
+                event_id="event-2",
+                idempotency_key="request-1",
+            ),
+        )
+        store.append_to_stream("messages", (first,))
+
+        with pytest.raises(DuplicateMessageError):
+            store.append_to_stream("messages", (duplicate,))
+
 
 class TestConcurrencyControl:
     def test_specific_version_succeeds_when_matching(self) -> None:
@@ -180,7 +252,9 @@ class TestConcurrencyControl:
 
     def test_stream_does_not_exist_succeeds_on_new_stream(self) -> None:
         store = InMemoryEventStore()
-        result = store.append_to_stream("cart-1", [_event("a")], expected_version=STREAM_DOES_NOT_EXIST)
+        result = store.append_to_stream(
+            "cart-1", [_event("a")], expected_version=STREAM_DOES_NOT_EXIST
+        )
         assert result.next_version == 1
 
     def test_stream_does_not_exist_fails_when_stream_has_events(self) -> None:
@@ -192,7 +266,9 @@ class TestConcurrencyControl:
     def test_no_concurrency_check_always_succeeds(self) -> None:
         store = InMemoryEventStore()
         store.append_to_stream("cart-1", [_event("a")])
-        result = store.append_to_stream("cart-1", [_event("b")], expected_version=NO_CONCURRENCY_CHECK)
+        result = store.append_to_stream(
+            "cart-1", [_event("b")], expected_version=NO_CONCURRENCY_CHECK
+        )
         assert result.next_version == 2
 
     def test_no_concurrency_check_is_default(self) -> None:
@@ -327,10 +403,12 @@ class TestAfterCommitHooks:
 
     def test_multiple_hooks_all_called(self) -> None:
         calls: list[str] = []
-        store = InMemoryEventStore(after_commit_hooks=[
-            lambda s, e: calls.append("hook1"),
-            lambda s, e: calls.append("hook2"),
-        ])
+        store = InMemoryEventStore(
+            after_commit_hooks=[
+                lambda s, e: calls.append("hook1"),
+                lambda s, e: calls.append("hook2"),
+            ]
+        )
         store.append_to_stream("cart-1", [_event("a")])
         assert calls == ["hook1", "hook2"]
 

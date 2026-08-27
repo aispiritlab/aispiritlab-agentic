@@ -11,8 +11,6 @@ from deepeval.evaluate.configs import AsyncConfig
 from deepeval.metrics import ExactMatchMetric
 from deepeval.optimizer import PromptOptimizer
 from deepeval.optimizer.algorithms.miprov2 import MIPROV2
-from deepeval.optimizer.types import OptimizationReport
-from deepeval.optimizer.utils import build_prompt_config_snapshots
 from deepeval.prompt import Prompt
 
 from evaluation.contracts import EvaluationDefinition, Flows, ToolScenario
@@ -23,24 +21,6 @@ from evaluation.eval_dataset import (
     build_goldens_from_scenarios,
     build_prompt_optimization_goldens,
 )
-
-
-class CompatibleMIPROV2(MIPROV2):
-    """Compatibility fix for DeepEval 3.8.x OptimizationReport shape mismatch."""
-
-    def _build_result(self, best):  # type: ignore[override]
-        prompt_config_snapshots = build_prompt_config_snapshots(
-            self.prompt_configurations_by_id
-        )
-        report = OptimizationReport(
-            optimization_id=self.optimization_id,
-            best_id=best.id,
-            accepted_iterations=[],
-            pareto_scores=self.pareto_score_table,
-            parents=self.parents_by_id,
-            prompt_configurations=prompt_config_snapshots,
-        )
-        return best.prompts[self.SINGLE_MODULE_ID], report
 
 
 class AgentPromptOptimization:
@@ -69,22 +49,22 @@ class AgentPromptOptimization:
         self._flows = flows if flows is not None else definition.flows
         self._prompt_text = prompt_text
 
-    def with_scenarios(self, scenarios: Sequence[ToolScenario]) -> "AgentPromptOptimization":
+    def with_scenarios(self, scenarios: Sequence[ToolScenario]) -> AgentPromptOptimization:
         self._scenarios = tuple(scenarios)
         return self
 
-    def with_flows(self, flows: Flows | None) -> "AgentPromptOptimization":
+    def with_flows(self, flows: Flows | None) -> AgentPromptOptimization:
         self._flows = flows
         return self
 
     def with_runtime_options(
         self,
         runtime_options: Mapping[str, Any] | None,
-    ) -> "AgentPromptOptimization":
+    ) -> AgentPromptOptimization:
         self._runtime_options = dict(runtime_options or {})
         return self
 
-    def with_prompt_text(self, prompt_text: str | None) -> "AgentPromptOptimization":
+    def with_prompt_text(self, prompt_text: str | None) -> AgentPromptOptimization:
         self._prompt_text = prompt_text
         return self
 
@@ -111,8 +91,6 @@ class AgentPromptOptimization:
         return self._output_path
 
 
-
-
 def optimize_prompt_text(
     *,
     definition: EvaluationDefinition,
@@ -136,20 +114,18 @@ def optimize_prompt_text(
         metadata = getattr(golden, "additional_metadata", None) or {}
         prefill_messages = metadata.get("prefill_messages", [])
         if isinstance(prefill_messages, list):
-            callback.prime(
-                [message for message in prefill_messages if isinstance(message, str)]
-            )
+            callback.prime([message for message in prefill_messages if isinstance(message, str)])
         return callback.run(golden.input, prompt_text=prompt.interpolate())
 
-    algorithm = CompatibleMIPROV2(
+    algorithm = MIPROV2(
         num_candidates=num_candidates,
         num_trials=num_trials,
         minibatch_size=3,
         minibatch_full_eval_steps=3,
-        max_bootstrapped_demos=2,
-        max_labeled_demos=2,
-        num_demo_sets=3,
-        random_seed=42,
+        max_bootstrapped_demonstrations=2,
+        max_labeled_demonstrations=2,
+        num_demonstration_sets=3,
+        random_state=42,
     )
 
     optimizer_model = FixedOpenRouterModel(
@@ -182,9 +158,7 @@ def _parse_runtime_options(items: Sequence[str]) -> dict[str, str]:
     for item in items:
         key, separator, value = item.partition("=")
         if not separator or not key.strip():
-            raise ValueError(
-                f"Runtime option '{item}' must use the KEY=VALUE format."
-            )
+            raise ValueError(f"Runtime option '{item}' must use the KEY=VALUE format.")
         runtime_options[key.strip()] = value
     return runtime_options
 

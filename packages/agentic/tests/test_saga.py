@@ -1,18 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
-from agentic.workflow.messages import Event, UserCommand
+from agentic.workflow.event_store import InMemoryEventStore
+from agentic.workflow.messages import Event, Message, RecordedMessageMetadata, UserCommand
 from agentic.workflow.saga import (
+    DurableSagaCoordinator,
     Saga,
     SagaAction,
-    SagaResult,
     SagaStep,
     replay_saga,
     run_saga_step,
 )
-
 
 # ---------------------------------------------------------------------------
 # Domain: Order Fulfillment Saga
@@ -85,26 +85,34 @@ def order_evolve(state: OrderSagaState, event: Event) -> OrderSagaState:
 def order_decide(event: Event, state: OrderSagaState) -> Sequence[SagaStep[UserCommand | Event]]:
     match state.status:
         case "awaiting_inventory":
-            return [SagaStep(
-                action=SagaAction.SENT,
-                message=_command("reserve_inventory", order_id=state.order_id),
-            )]
+            return [
+                SagaStep(
+                    action=SagaAction.SENT,
+                    message=_command("reserve_inventory", order_id=state.order_id),
+                )
+            ]
         case "awaiting_payment":
-            return [SagaStep(
-                action=SagaAction.SENT,
-                message=_command("charge_payment", order_id=state.order_id),
-            )]
+            return [
+                SagaStep(
+                    action=SagaAction.SENT,
+                    message=_command("charge_payment", order_id=state.order_id),
+                )
+            ]
         case "awaiting_shipment":
-            return [SagaStep(
-                action=SagaAction.SENT,
-                message=_command("ship_order", order_id=state.order_id),
-            )]
+            return [
+                SagaStep(
+                    action=SagaAction.SENT,
+                    message=_command("ship_order", order_id=state.order_id),
+                )
+            ]
         case "compensating":
             if state.inventory_reserved:
-                return [SagaStep(
-                    action=SagaAction.COMPENSATED,
-                    message=_command("release_inventory", order_id=state.order_id),
-                )]
+                return [
+                    SagaStep(
+                        action=SagaAction.COMPENSATED,
+                        message=_command("release_inventory", order_id=state.order_id),
+                    )
+                ]
             return []
         case _:
             return []
@@ -226,3 +234,59 @@ class TestReplaySaga:
     def test_replay_empty_events(self) -> None:
         state = replay_saga(order_saga, [])
         assert state.status == "idle"
+
+
+class TestDurableSagaCoordinator:
+    @staticmethod
+    def coordinator(store: InMemoryEventStore) -> DurableSagaCoordinator[OrderSagaState]:
+        durable_saga: Saga[Message, OrderSagaState, Message] = Saga(
+            decide=lambda event, state: order_decide(event, state),  # type: ignore[arg-type]
+            evolve=lambda state, event: order_evolve(state, event),  # type: ignore[arg-type]
+            initial_state=OrderSagaState,
+        )
+        return DurableSagaCoordinator(
+            name="orders",
+            saga=durable_saga,
+            event_store=store,
+        )
+
+    def test_persists_inbox_and_outbox_and_replays_duplicate(self) -> None:
+        store = InMemoryEventStore()
+        coordinator = self.coordinator(store)
+        incoming = Event(
+            type="order_placed",
+            data={"order_id": "o-1"},
+            metadata=RecordedMessageMetadata(message_id="input-1"),
+        )
+
+        first = coordinator.handle("o-1", incoming)
+        duplicate = coordinator.handle("o-1", incoming)
+
+        assert first.duplicate is False
+        assert duplicate.duplicate is True
+        assert [message.type for message in duplicate.outputs] == ["reserve_inventory"]
+        assert duplicate.outputs[0].metadata.causation_id == "input-1"
+        assert len(store.read_stream("saga:orders:o-1").events) == 2
+        assert coordinator.state("o-1").status == "awaiting_inventory"
+
+    def test_timeout_is_due_once_and_uses_deterministic_inbox_identity(self) -> None:
+        store = InMemoryEventStore()
+        coordinator = self.coordinator(store)
+        coordinator.schedule_timeout(
+            "o-1",
+            timeout_id="payment",
+            due_at_ns=100,
+            data={"order_id": "o-1"},
+        )
+
+        assert coordinator.fire_timeout("o-1", timeout_id="payment", now_ns=99) is None
+        fired = coordinator.fire_timeout("o-1", timeout_id="payment", now_ns=100)
+        duplicate = coordinator.fire_timeout("o-1", timeout_id="payment", now_ns=101)
+
+        assert fired is not None
+        assert fired.duplicate is False
+        assert duplicate is None
+        events = store.read_stream("saga:orders:o-1").events
+        timeout_inputs = [event for event in events if event.type == "saga.timeout_fired"]
+        assert len(timeout_inputs) == 1
+        assert timeout_inputs[0].metadata.message_id == "saga-timeout:orders:o-1:payment"

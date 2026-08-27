@@ -11,7 +11,6 @@ from typing import Any
 
 from agentic.integrations import TavilySearchProvider, ValyuSearchProvider
 from agentic.llm_call import LLMCall
-from providers.api import OpenAIProvider
 from agentic.specialized_agents.planner_agent import PlannerAgent
 from agentic.specialized_agents.router_agent import RouterAgent as GenericRouter
 from agentic.specialized_agents.search_agent import SearchAgent
@@ -25,11 +24,11 @@ from agentic.workflow import (
     workflow_output_handler,
 )
 from agentic.workflow.messages import ConversationData, RecordedMessageMetadata
-from agentic_runtime.settings import Settings
-from knowledge_base.store import open_knowledge_base
-
 from agentic_graph.events import GraphCompletionEvent, GraphDispatchEvent, GraphOutputReadyEvent
 from agentic_graph.models import AgentGraph, AgentNode, Connection
+from agentic_runtime.settings import Settings
+from knowledge_base.store import open_knowledge_base
+from providers.api import OpenAIProvider
 
 _SEARCH_PROVIDER_NAMES = {"tavily_search", "valyu_search"}
 _LLM_AGENT_NAMES = {"llm_chat", "api_router", "planner", "summarizer", "searcher"}
@@ -187,7 +186,9 @@ class CompiledGraphSystem:
         self._agents: dict[str, object] = {}
         self._integrations: dict[str, object] = {}
         self._expected_completion_counts: dict[tuple[str, str], int] = defaultdict(int)
-        self._completion_buckets: dict[tuple[str, str], list[GraphCompletionEvent]] = defaultdict(list)
+        self._completion_buckets: dict[tuple[str, str], list[GraphCompletionEvent]] = defaultdict(
+            list
+        )
         self._completed_summaries: set[tuple[str, str]] = set()
         self._reserved_completion_sources: set[tuple[str, str]] = set()
         self._last_inputs: dict[tuple[str, str], str] = {}
@@ -247,13 +248,18 @@ class CompiledGraphSystem:
                 api_key = self._integration_api_key(node)
                 self._integrations[node.node_id] = ValyuSearchProvider(api_key=api_key)
             elif node.agent_name == "knowledge_base":
-                path_value = _normalize_text(config_map.get("path", "data/knowledge_base")) or "data/knowledge_base"
+                path_value = (
+                    _normalize_text(config_map.get("path", "data/knowledge_base"))
+                    or "data/knowledge_base"
+                )
                 self._integrations[node.node_id] = open_knowledge_base(Path(path_value))
 
     def _instantiate_agents(self) -> None:
         for node_id, plan in self.compiled.agents.items():
             provider_type = plan.provider.provider_type if plan.provider is not None else "openai"
-            model_id = plan.provider.model_id if plan.provider is not None else self.settings.model_name
+            model_id = (
+                plan.provider.model_id if plan.provider is not None else self.settings.model_name
+            )
             if plan.agent_name == "llm_chat":
                 self._agents[node_id] = LLMCall(
                     model_name=model_id,
@@ -324,7 +330,9 @@ class CompiledGraphSystem:
                 self.runtime.register_workflow(plan.alias, workflow)
                 continue
             if plan.agent_name == "planner":
-                self.runtime.register_workflow(plan.alias, self._make_planner_workflow(plan, agent))
+                self.runtime.register_workflow(
+                    plan.alias, self._make_planner_workflow(plan, agent)
+                )
                 continue
             if plan.agent_name == "api_router":
                 self.runtime.register_workflow(plan.alias, self._make_router_workflow(plan, agent))
@@ -384,7 +392,9 @@ class CompiledGraphSystem:
             self.final_responses[message.metadata.turn_id] = text
             return WorkflowExecution(
                 text=text,
-                emitted_events=tuple(self._build_result_events(plan, text, message.metadata.turn_id)),
+                emitted_events=tuple(
+                    self._build_result_events(plan, text, message.metadata.turn_id)
+                ),
             )
 
         return _handle
@@ -436,7 +446,9 @@ class CompiledGraphSystem:
                     text=text,
                     emitted_events=tuple(self._completion_and_output_events(plan, text)),
                 )
-            selected_alias = _normalize_text(agent.route(message.data.text or "", available_agents))
+            selected_alias = _normalize_text(
+                agent.route(message.data.text or "", available_agents)
+            )
             if selected_alias not in plan.dispatch_targets:
                 raise ValueError(
                     f"Router '{plan.display_name}' selected an unconnected target '{selected_alias}'."
@@ -526,7 +538,9 @@ class CompiledGraphSystem:
             return plan.dispatch_targets
         if plan.dispatch_mode == "route_one":
             router = GenericRouter(
-                model_id=plan.provider.model_id if plan.provider is not None else self.settings.orchestration_model_name,
+                model_id=plan.provider.model_id
+                if plan.provider is not None
+                else self.settings.orchestration_model_name,
                 model_provider_type=(
                     plan.provider.provider_type if plan.provider is not None else "openai"
                 ),
@@ -576,9 +590,7 @@ class CompiledGraphSystem:
                 continue
             summarizer_alias = self.compiled.aliases[summarizer_node_id]
             self._completed_summaries.add(key)
-            self.steps.append(
-                f"{summarizer_alias}: summarizing {len(bucket)} event(s)"
-            )
+            self.steps.append(f"{summarizer_alias}: summarizing {len(bucket)} event(s)")
             incoming = UserMessage(
                 data=ConversationData(role="user", text=self._build_summarizer_input(bucket)),
                 metadata=RecordedMessageMetadata(

@@ -4,10 +4,10 @@ import time
 import pytest
 
 from agentic.agent import Agent
+from agentic.prompts import GemmaPromptBuilder
 from providers.models import ModelConfig
 from providers.models.response import ModelResponse
 from providers.orchestrator import ModelProvider
-from agentic.prompts import GemmaPromptBuilder
 
 
 def test_model_provider_returns_loaded_model_instance() -> None:

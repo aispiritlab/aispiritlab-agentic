@@ -44,6 +44,7 @@ from agentic_graph.tab_state import (
 def _get_workspace_names() -> list[str]:
     try:
         from agentic_runtime.workspaces import list_workspaces
+
         return [w.name for w in list_workspaces()]
     except Exception:
         return []
@@ -184,7 +185,6 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
         # RIGHT SIDEBAR — Properties (collapsible)
         # ══════════════════════════════════════
         with gr.Accordion("Properties", open=True):
-
             prop_name = gr.Textbox(label="Display name", interactive=True)
             prop_agent = gr.Textbox(label="Block id", interactive=False)
             prop_type = gr.Textbox(label="Kind", interactive=False, visible=False)
@@ -198,33 +198,45 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
             with gr.Group(visible=False, elem_classes=["settings-section"]) as provider_group:
                 gr.Markdown("Model Provider", elem_classes=["section-label", "section-label-cyan"])
                 prop_provider_type = gr.Textbox(
-                    label="Provider type", interactive=True,
-                    placeholder="openai", info="openai, mlx, vllm, transformers",
+                    label="Provider type",
+                    interactive=True,
+                    placeholder="openai",
+                    info="openai, mlx, vllm, transformers",
                 )
                 prop_model_id = gr.Textbox(
-                    label="Model ID", interactive=True, placeholder="qwen3.5-4b",
+                    label="Model ID",
+                    interactive=True,
+                    placeholder="qwen3.5-4b",
                 )
 
             with gr.Group(visible=False, elem_classes=["settings-section"]) as integration_group:
                 gr.Markdown("Integration", elem_classes=["section-label", "section-label-amber"])
                 prop_api_key = gr.Textbox(
-                    label="API token", interactive=True,
-                    type="password", placeholder="Session-only secret",
+                    label="API token",
+                    interactive=True,
+                    type="password",
+                    placeholder="Session-only secret",
                 )
                 prop_api_key_env = gr.Textbox(
-                    label="API token env var", interactive=True, placeholder="TAVILY_API_KEY",
+                    label="API token env var",
+                    interactive=True,
+                    placeholder="TAVILY_API_KEY",
                 )
 
             with gr.Group(visible=False, elem_classes=["settings-section"]) as output_group:
                 gr.Markdown("Output", elem_classes=["section-label", "section-label-violet"])
                 prop_path = gr.Textbox(
-                    label="Output path", interactive=True, placeholder="outputs/agentic_graph.md",
+                    label="Output path",
+                    interactive=True,
+                    placeholder="outputs/agentic_graph.md",
                 )
 
             with gr.Group(visible=False) as common_bottom:
                 prop_config = gr.Textbox(
-                    label="Advanced config", interactive=True,
-                    lines=3, placeholder="key=value (one per line)",
+                    label="Advanced config",
+                    interactive=True,
+                    lines=3,
+                    placeholder="key=value (one per line)",
                 )
                 delete_node_btn = gr.Button("Delete Block", variant="stop", size="sm")
 
@@ -250,15 +262,18 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
     with gr.Accordion("Import", open=False):
         import_input = gr.Textbox(
             label="Paste graph JSON",
-            lines=4, placeholder='{"graph_id": "...", "nodes": [...]}',
+            lines=4,
+            placeholder='{"graph_id": "...", "nodes": [...]}',
         )
         import_apply_btn = gr.Button("Apply Import", size="sm")
 
     with gr.Accordion("Runtime", open=False):
         with gr.Row():
             runtime_input = gr.Textbox(
-                label="Input", lines=2,
-                placeholder="Ask the runtime something...", scale=4,
+                label="Input",
+                lines=2,
+                placeholder="Ask the runtime something...",
+                scale=4,
             )
             run_runtime_btn = gr.Button("Run", variant="primary", size="sm")
         runtime_output = gr.Textbox(label="Output", lines=14, interactive=False)
@@ -277,11 +292,15 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
         return gr.update(choices=choices, value=value)
 
     block_kind_selector.change(
-        update_block_selector, inputs=[block_kind_selector], outputs=[block_selector],
+        update_block_selector,
+        inputs=[block_kind_selector],
+        outputs=[block_selector],
     )
 
     add_block_btn.click(
-        add_block, inputs=[block_selector, graph_json_bridge], outputs=[graph_json_bridge],
+        add_block,
+        inputs=[block_selector, graph_json_bridge],
+        outputs=[graph_json_bridge],
     ).then(None, inputs=[graph_json_bridge], js=CANVAS_LOAD_JS)
 
     graph_json_bridge.change(
@@ -294,20 +313,36 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
         _on_node_selected_with_visibility,
         inputs=[selected_node_bridge, graph_json_bridge, integration_secret_state],
         outputs=[
-            prop_name, prop_agent, prop_type, prop_desc,
-            prop_caps, prop_is_entry,
-            prop_api_key, prop_api_key_env, prop_path, prop_config,
-            prop_provider_type, prop_model_id,
-            agent_group, provider_group, integration_group, output_group, common_bottom,
+            prop_name,
+            prop_agent,
+            prop_type,
+            prop_desc,
+            prop_caps,
+            prop_is_entry,
+            prop_api_key,
+            prop_api_key_env,
+            prop_path,
+            prop_config,
+            prop_provider_type,
+            prop_model_id,
+            agent_group,
+            provider_group,
+            integration_group,
+            output_group,
+            common_bottom,
         ],
     )
 
     delete_node_btn.click(
-        delete_selected, inputs=[selected_node_bridge, graph_json_bridge], outputs=[graph_json_bridge],
+        delete_selected,
+        inputs=[selected_node_bridge, graph_json_bridge],
+        outputs=[graph_json_bridge],
     ).then(None, inputs=[graph_json_bridge], js=CANVAS_LOAD_JS)
 
     set_entry_btn.click(
-        set_entry, inputs=[selected_node_bridge, graph_json_bridge], outputs=[graph_json_bridge],
+        set_entry,
+        inputs=[selected_node_bridge, graph_json_bridge],
+        outputs=[graph_json_bridge],
     ).then(None, inputs=[graph_json_bridge], js=CANVAS_LOAD_JS)
 
     prop_api_key.change(
@@ -316,54 +351,83 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
         outputs=[integration_secret_state],
     )
 
-    for component in (prop_name, prop_desc, prop_api_key_env, prop_path, prop_config, prop_provider_type, prop_model_id):
+    for component in (
+        prop_name,
+        prop_desc,
+        prop_api_key_env,
+        prop_path,
+        prop_config,
+        prop_provider_type,
+        prop_model_id,
+    ):
         component.change(
             update_node_property,
             inputs=[
-                selected_node_bridge, graph_json_bridge,
-                prop_name, prop_desc, prop_api_key_env, prop_path, prop_config,
-                prop_provider_type, prop_model_id,
+                selected_node_bridge,
+                graph_json_bridge,
+                prop_name,
+                prop_desc,
+                prop_api_key_env,
+                prop_path,
+                prop_config,
+                prop_provider_type,
+                prop_model_id,
             ],
             outputs=[graph_json_bridge],
         ).then(None, inputs=[graph_json_bridge], js=CANVAS_LOAD_JS)
 
     graph_name_input.change(
-        update_graph_name, inputs=[graph_name_input, graph_json_bridge], outputs=[graph_json_bridge],
+        update_graph_name,
+        inputs=[graph_name_input, graph_json_bridge],
+        outputs=[graph_json_bridge],
     )
 
     # Toolbar
     export_btn.click(
-        export_json, inputs=[graph_json_bridge, integration_secret_state],
-        outputs=[validation_output, artifact_output], js=CANVAS_GET_GRAPH_JS,
+        export_json,
+        inputs=[graph_json_bridge, integration_secret_state],
+        outputs=[validation_output, artifact_output],
+        js=CANVAS_GET_GRAPH_JS,
     )
     validate_btn.click(
-        validate_graph_artifact, inputs=[graph_json_bridge, integration_secret_state],
-        outputs=[validation_output, artifact_output], js=CANVAS_GET_GRAPH_JS,
+        validate_graph_artifact,
+        inputs=[graph_json_bridge, integration_secret_state],
+        outputs=[validation_output, artifact_output],
+        js=CANVAS_GET_GRAPH_JS,
     )
     summary_btn.click(
-        generate_summary, inputs=[graph_json_bridge, integration_secret_state],
-        outputs=[validation_output, artifact_output], js=CANVAS_GET_GRAPH_JS,
+        generate_summary,
+        inputs=[graph_json_bridge, integration_secret_state],
+        outputs=[validation_output, artifact_output],
+        js=CANVAS_GET_GRAPH_JS,
     )
     generate_btn.click(
-        generate_code, inputs=[graph_json_bridge, integration_secret_state],
-        outputs=[validation_output, artifact_output], js=CANVAS_GET_GRAPH_JS,
+        generate_code,
+        inputs=[graph_json_bridge, integration_secret_state],
+        outputs=[validation_output, artifact_output],
+        js=CANVAS_GET_GRAPH_JS,
     )
     import_btn.click(lambda: None)  # Just opens the Import accordion
 
     # Import
     import_apply_btn.click(
-        import_json, inputs=[import_input], outputs=[graph_json_bridge, validation_output],
+        import_json,
+        inputs=[import_input],
+        outputs=[graph_json_bridge, validation_output],
     ).then(None, inputs=[graph_json_bridge], js=CANVAS_LOAD_JS)
 
     # Runtime
     run_runtime_btn.click(
-        run_runtime, inputs=[graph_json_bridge, integration_secret_state, runtime_input],
-        outputs=[validation_output, runtime_output, runtime_status_state], js=CANVAS_RUNTIME_START_JS,
+        run_runtime,
+        inputs=[graph_json_bridge, integration_secret_state, runtime_input],
+        outputs=[validation_output, runtime_output, runtime_status_state],
+        js=CANVAS_RUNTIME_START_JS,
     ).then(None, inputs=[runtime_status_state], js=CANVAS_RUNTIME_DONE_JS)
 
     # Presets
     load_workspace_btn.click(
-        load_from_workspace, inputs=[workspace_load_selector],
+        load_from_workspace,
+        inputs=[workspace_load_selector],
         outputs=[graph_json_bridge, workspace_save_status],
     ).then(None, inputs=[graph_json_bridge], js=CANVAS_LOAD_JS)
 
@@ -375,14 +439,16 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
         )
 
     delete_workspace_btn.click(
-        delete_workspace_action, inputs=[workspace_load_selector],
+        delete_workspace_action,
+        inputs=[workspace_load_selector],
         outputs=[workspace_load_selector, workspace_save_status],
     )
 
     save_workspace_btn.click(
         save_as_workspace,
         inputs=[graph_json_bridge, integration_secret_state, workspace_name_input],
-        outputs=[workspace_save_status], js=CANVAS_GET_GRAPH_JS,
+        outputs=[workspace_save_status],
+        js=CANVAS_GET_GRAPH_JS,
     ).then(
         lambda: gr.Dropdown(choices=_get_workspace_names()),
         outputs=[workspace_load_selector],
@@ -391,4 +457,4 @@ def build_agent_builder_tab(*, active_workspace_state: gr.State | None = None) -
 
 _sanitize_graph_and_secrets = sanitize_graph_and_secrets
 
-__all__ = ["SecretState", "build_agent_builder_tab", "_sanitize_graph_and_secrets"]
+__all__ = ["SecretState", "_sanitize_graph_and_secrets", "build_agent_builder_tab"]

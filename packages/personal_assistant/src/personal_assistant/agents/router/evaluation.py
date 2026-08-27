@@ -3,19 +3,17 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from providers.models import ModelConfig
-from providers.orchestrator import ModelProvider
 from agentic.prompts import GemmaPromptBuilder, PromptTemplate, QwenPromptBuilder
 from evaluation import EvaluationDefinition, ToolScenario, serialize_scenarios_to_json
-
 from personal_assistant.settings import settings
+from providers.models import ModelConfig
+from providers.orchestrator import ModelProvider
 
 from ..discovery_notes.detective_agent import DiscoveryNotesAgent
 from ..manage_notes.manage_notes_agent import ManageNotesAgent
 from ..personalize.personalize_agent import PersonalizeAgent
 from ..sage.sage_agent import SageAgent
 from .flows import DEFAULT_ROUTER_FLOWS
-
 
 ROUTER_TOOL_SCENARIOS: tuple[ToolScenario, ...] = (
     ToolScenario(
@@ -51,8 +49,7 @@ ROUTER_TOOL_SCENARIOS: tuple[ToolScenario, ...] = (
     ToolScenario(
         name="route_sage_decision",
         user_message=(
-            "Pomóż mi zdecydować, czy zatrudnić freelancera, czy "
-            "budować zespół wewnętrzny."
+            "Pomóż mi zdecydować, czy zatrudnić freelancera, czy budować zespół wewnętrzny."
         ),
         expected_output="sage",
     ),
@@ -94,9 +91,7 @@ def _default_available_workflows_summary() -> str:
 class RouterEvalCallback:
     _ROUTE_TEMPLATE = PromptTemplate(
         template=(
-            "Dostępni agenci:\n"
-            "{available_workflows_summary}\n\n"
-            "Wiadomość użytkownika: {message}\n"
+            "Dostępni agenci:\n{available_workflows_summary}\n\nWiadomość użytkownika: {message}\n"
         ),
         context_variables=["available_workflows_summary", "message"],
     )

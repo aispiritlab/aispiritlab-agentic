@@ -1,6 +1,7 @@
+from collections.abc import Callable
 import functools
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any
 
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
@@ -48,7 +49,7 @@ def commit(path: Callable[[], Path | None]) -> Callable[[Callable[..., Any]], Ca
 
             try:
                 repo = get_repo(repo_path)
-            except (InvalidGitRepositoryError, NoSuchPathError, TypeError):
+            except InvalidGitRepositoryError, NoSuchPathError, TypeError:
                 return result
 
             # Stage all changes, including newly created files.
@@ -60,8 +61,13 @@ def commit(path: Callable[[], Path | None]) -> Callable[[Callable[..., Any]], Ca
                 repo.git.commit(m=f"Commit from {func.__name__}")
             except GitCommandError as error:
                 message = str(error).lower()
-                if "nothing to commit" not in message and "no changes added to commit" not in message:
+                if (
+                    "nothing to commit" not in message
+                    and "no changes added to commit" not in message
+                ):
                     raise
             return result
+
         return wrapper
+
     return decorator

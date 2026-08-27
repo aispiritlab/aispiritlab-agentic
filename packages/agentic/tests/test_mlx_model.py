@@ -1,7 +1,7 @@
 from providers.models import (
-    ModelConfig,
     QWEN_DEFAULT_PRESET_BY_MODE,
     QWEN_SAMPLING_PRESETS,
+    ModelConfig,
     resolve_sampling_profile,
 )
 

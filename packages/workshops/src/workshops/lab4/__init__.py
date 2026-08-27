@@ -7,15 +7,16 @@ Builds on lab3's event-driven pattern by adding a WorkshopRuntime that provides:
 - Turn lifecycle events (TurnStarted / TurnCompleted)
 - Message log for observability
 """
+
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import ClassVar
 
 from agentic.core_agent import CoreAgentic
-from providers.models import ModelConfig
 from agentic.prompts import QwenPromptBuilder
 from agentic.specialized_agents import PlannerAgent, TaskCompleted
-
+from agentic.workflow import message_text
+from providers.models import ModelConfig
 from workshops.tui import LabApp
 
 from .handlers import build_worker_output_handler
@@ -29,7 +30,7 @@ MODEL_ID = "Qwen/Qwen3.5-2B"
 class Lab4App(LabApp):
     lab_title = "Lab 4 — Full Runtime"
     lab_subtitle = "Message bus + lifecycle events"
-    lab_info = [
+    lab_info: ClassVar[list[str]] = [
         f"Model: {MODEL_ID} (local, MLX)",
         "",
         "New vs Lab 3:",
@@ -58,7 +59,8 @@ class Lab4App(LabApp):
         """Callback invoked by the output handler when a worker finishes."""
         self._completed.append(task)
         self.write_activity(
-            "Completed", f"{task.target_agent}: {task.task_description[:40]}",
+            "Completed",
+            f"{task.target_agent}: {task.task_description[:40]}",
             style="#9ece6a",
         )
 
@@ -104,9 +106,9 @@ class Lab4App(LabApp):
         lines = ["### Message Bus Log\n"]
         for i, msg in enumerate(log, 1):
             kind = msg.kind
-            source = msg.source or "?"
-            name = msg.name or ""
-            text_preview = (msg.text or "")[:60]
+            source = msg.metadata.source or "?"
+            name = getattr(msg, "name", "") or ""
+            text_preview = message_text(msg)[:60]
             if name:
                 lines.append(f"{i}. `[{kind}]` source=**{source}** name=*{name}*")
             elif text_preview:

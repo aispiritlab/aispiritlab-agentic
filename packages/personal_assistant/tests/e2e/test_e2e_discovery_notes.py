@@ -28,15 +28,11 @@ def discovery_callback(monkeypatch):
 _SCENARIO_NAMES = ("search_rag_foundations", "search_embeddings")
 
 
-@pytest.mark.parametrize(
-    "scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES
-)
+@pytest.mark.parametrize("scenario_name", _SCENARIO_NAMES, ids=_SCENARIO_NAMES)
 def test_discovery_notes_e2e(discovery_callback, scenario_name):
     from personal_assistant.agents.discovery_notes.evaluation import DISCOVERY_NOTES_TOOL_SCENARIOS
 
-    scenario = next(
-        s for s in DISCOVERY_NOTES_TOOL_SCENARIOS if s.name == scenario_name
-    )
+    scenario = next(s for s in DISCOVERY_NOTES_TOOL_SCENARIOS if s.name == scenario_name)
 
     response = discovery_callback.run(scenario.user_message)
 

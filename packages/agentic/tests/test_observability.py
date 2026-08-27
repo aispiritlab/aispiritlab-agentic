@@ -1,6 +1,7 @@
+from typing import Self
+
 import pytest
 
-from providers.models.response import ModelResponse
 from agentic.observability import (
     MlflowLLMTracer,
     MlflowSpanHandle,
@@ -9,6 +10,7 @@ from agentic.observability import (
     TraceSnapshot,
     TracingContext,
 )
+from providers.models.response import ModelResponse
 
 
 class _FakeSpan:
@@ -31,7 +33,7 @@ class _FakeSpan:
     def set_attribute(self, key: str, value: object) -> None:
         self.attributes[key] = value
 
-    def __enter__(self) -> "_FakeSpan":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
@@ -90,9 +92,8 @@ def _make_tracer(
 def test_mlflow_tracer_preserves_body_exception() -> None:
     tracer, _ = _make_tracer()
 
-    with pytest.raises(ValueError, match="boom"):
-        with tracer.agent(name="test", agent_id="a1"):
-            raise ValueError("boom")
+    with pytest.raises(ValueError, match="boom"), tracer.agent(name="test", agent_id="a1"):
+        raise ValueError("boom")
 
 
 def test_mlflow_tracer_workflow_sets_session_metadata() -> None:
@@ -193,21 +194,23 @@ def test_mlflow_tracer_records_chat_tools_when_available() -> None:
 def test_mlflow_tracer_rolls_up_summary_attributes() -> None:
     tracer, fake = _make_tracer()
 
-    with tracer.workflow(name="workflow", session_id="sess-1"):
-        with tracer.agent(name="agent.run", agent_id="agent-1"):
-            tracer.llm(
-                name="llm-call",
+    with (
+        tracer.workflow(name="workflow", session_id="sess-1"),
+        tracer.agent(name="agent.run", agent_id="agent-1"),
+    ):
+        tracer.llm(
+            name="llm-call",
+            model="test-model",
+            messages=[{"role": "user", "content": "hi"}],
+            invoke=lambda: ModelResponse(
+                text="hello",
                 model="test-model",
-                messages=[{"role": "user", "content": "hi"}],
-                invoke=lambda: ModelResponse(
-                    text="hello",
-                    model="test-model",
-                    prompt_tokens=10,
-                    completion_tokens=5,
-                ),
-            )
-            with tracer.step(name="tool.lookup", span_type="TOOL", attributes={"tool_name": "lookup"}):
-                pass
+                prompt_tokens=10,
+                completion_tokens=5,
+            ),
+        )
+        with tracer.step(name="tool.lookup", span_type="TOOL", attributes={"tool_name": "lookup"}):
+            pass
 
     workflow_span = fake.spans[0]
     agent_span = fake.spans[1]
@@ -239,10 +242,12 @@ def test_noop_tracer_llm_calls_invoke() -> None:
 
 def test_noop_tracer_context_managers() -> None:
     tracer = NoopLLMTracer()
-    with tracer.workflow(name="w", session_id="s"):
-        with tracer.agent(name="a"):
-            with tracer.step(name="s"):
-                pass
+    with (
+        tracer.workflow(name="w", session_id="s"),
+        tracer.agent(name="a"),
+        tracer.step(name="s"),
+    ):
+        pass
     assert tracer.current_trace_id is None
 
 

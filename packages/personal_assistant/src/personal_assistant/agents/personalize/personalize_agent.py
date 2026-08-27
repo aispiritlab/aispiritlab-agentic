@@ -7,6 +7,7 @@ from agentic.metadata import Description
 class WrongPath(ValueError):
     pass
 
+
 def extract_posix_token(text: str) -> str | None:
     stop = set(" \t\r\n\"'<>[](){};,")
     n = len(text)

@@ -7,8 +7,8 @@ from typing import Any
 
 from structlog import get_logger
 
-from providers.client._http_client import HttpClient
-from providers.client._openai_schema import (
+from providers.api.http_client import HttpClient
+from providers.api.openai_schema import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatMessage,
@@ -28,11 +28,11 @@ class HttpInferenceClient:
         *,
         api_key: str | None = None,
         model: str = "default",
-        config: InferenceConfig = InferenceConfig(),
+        config: InferenceConfig | None = None,
         timeout: float = 120.0,
     ) -> None:
         self._model = model
-        self._config = config
+        self._config = config or InferenceConfig()
         self._client = HttpClient(base_url, api_key=api_key, timeout=timeout)
 
     def _build_messages(self, prompt: str | list[dict[str, str]]) -> list[ChatMessage]:

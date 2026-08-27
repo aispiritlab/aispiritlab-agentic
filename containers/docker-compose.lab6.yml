@@ -1,7 +1,7 @@
 services:
   redis:
     image: redis:8.6-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     ports:
       - "6379:6379"
     healthcheck:
@@ -9,6 +9,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    volumes:
+      - redis-data:/data
 
   planner-agent:
     platform: linux/amd64
@@ -23,6 +25,10 @@ services:
       AGENTIC_TRANSPORT: redis_streams
       REDIS_URL: redis://redis:6379/0
       API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
+      EVENT_STORE_PATH: /data/workflow.sqlite3
+      DISTRIBUTED_REQUIRE_EVENT_STORE: "true"
+    volumes:
+      - planner-data:/data
     depends_on:
       redis:
         condition: service_healthy
@@ -42,6 +48,10 @@ services:
       AGENTIC_TRANSPORT: redis_streams
       REDIS_URL: redis://redis:6379/0
       API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
+      EVENT_STORE_PATH: /data/workflow.sqlite3
+      DISTRIBUTED_REQUIRE_EVENT_STORE: "true"
+    volumes:
+      - search-data:/data
     depends_on:
       redis:
         condition: service_healthy
@@ -61,6 +71,10 @@ services:
       AGENTIC_TRANSPORT: redis_streams
       REDIS_URL: redis://redis:6379/0
       API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
+      EVENT_STORE_PATH: /data/workflow.sqlite3
+      DISTRIBUTED_REQUIRE_EVENT_STORE: "true"
+    volumes:
+      - summary-data:/data
     depends_on:
       redis:
         condition: service_healthy
@@ -72,7 +86,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    command: ["chat"]
+    command: ["lab6-chat"]
     env_file:
       - ../.env
     environment:
@@ -96,3 +110,9 @@ services:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+volumes:
+  redis-data:
+  planner-data:
+  search-data:
+  summary-data:

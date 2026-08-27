@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-from agentic_runtime.distributed.client import DistributedChatClient
 from agentic_runtime.distributed.discovery import AgenticServiceDiscovery
 from agentic_runtime.distributed.registry import AgentSnapshot
 from agentic_runtime.messaging.messages import Message, UserMessage
@@ -64,8 +63,7 @@ class DistributedAgenticRuntime:
         if isinstance(message, UserMessage):
             return self.run(message.data.text or "")
         raise NotImplementedError(
-            "Distributed runtime only supports UserMessage. "
-            f"Got {type(message).__name__}."
+            f"Distributed runtime only supports UserMessage. Got {type(message).__name__}."
         )
 
     def start(self) -> str:

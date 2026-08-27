@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from agentic.history import History
-from providers.orchestrator import ModelProvider
-from agentic.message import SystemMessage
-from agentic.metadata import Description
+from structlog import get_logger
+
 from agentic.core_agent import CoreAgentic
+from agentic.history import History
+from agentic.message import AssistantMessage
+from agentic.metadata import Description
+from personal_assistant.settings import settings
+from providers.orchestrator import ModelProvider
+
 from .commands import AddNoteCommand, EditNoteCommand
 from .events import CreatedNote, NoteUpdated
-from .tools import toolset as manage_notes_toolset, _get_vault_path, _normalize_note_name
-from personal_assistant.settings import settings
-from structlog import get_logger
+from .tools import _get_vault_path, _normalize_note_name
+from .tools import toolset as manage_notes_toolset
 
 logger = get_logger(__name__)
 
@@ -41,7 +44,7 @@ class ManageNotesAgent(CoreAgentic):
 
     def start(self) -> str:
         self._agent.history = History()
-        self._agent.history.add(SystemMessage(self._WELCOME_MESSAGE))
+        self._agent.history.add(AssistantMessage(self._WELCOME_MESSAGE))
         return self._WELCOME_MESSAGE
 
     @staticmethod
@@ -66,7 +69,11 @@ class ManageNotesAgent(CoreAgentic):
         if command is None:
             return response.output
 
-        tool_result = response.tool_results[0] if response.tool_results else self._agent.toolsets.execute(command)
+        tool_result = (
+            response.tool_results[0]
+            if response.tool_results
+            else self._agent.toolsets.execute(command)
+        )
 
         match command:
             case AddNoteCommand(note_name=name, note=content):
@@ -75,10 +82,14 @@ class ManageNotesAgent(CoreAgentic):
                     note_name=name,
                     note_path=self._resolve_note_path(name),
                 )
-                return tool_result.output, CreatedNote(
-                    note_name=name,
-                    note_content=content,
-                ), note_updated
+                return (
+                    tool_result.output,
+                    CreatedNote(
+                        note_name=name,
+                        note_content=content,
+                    ),
+                    note_updated,
+                )
             case EditNoteCommand(note_name=name):
                 logger.info(f"Edit note result: {command}")
                 return tool_result.output, NoteUpdated(

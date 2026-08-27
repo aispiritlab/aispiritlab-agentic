@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 import importlib
 import json
 import os
+from pathlib import Path
 import re
 import time
-from contextlib import contextmanager
-from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Any
 
-import orjson
-import pytest
 from deepeval.errors import DeepEvalError
 from deepeval.metrics import (
     GEval,
@@ -27,14 +25,18 @@ from deepeval.test_case import (
     ToolCall,
     ToolCallParams,
 )
+import orjson
+import pytest
 
-from providers.orchestrator import ModelProvider as AgenticModelProvider
 import agentic.prompts as agentic_prompts
-from personal_assistant.agents.manage_notes.evaluation import NOTES_EVALUATION, NOTES_TOOL_SCENARIOS
 from evaluation import ConversationScenario, ToolScenario, build_conversation_scenarios
 from evaluation.deepeval_providers.deepeval_openrouter import FixedOpenRouterModel
+from personal_assistant.agents.manage_notes.evaluation import (
+    NOTES_EVALUATION,
+    NOTES_TOOL_SCENARIOS,
+)
+from providers.orchestrator import ModelProvider as AgenticModelProvider
 from registry.prompts import GREETING_PROMPT, MANAGE_NOTES_PROMPT, Prompts
-
 
 DEFAULT_NOTES_OPENROUTER_MODELS: tuple[str, ...] = (
     "mlx-community/Phi-4-mini-reasoning-bf16",
@@ -325,9 +327,7 @@ def _candidate_models() -> tuple[tuple[str, str], ...]:
 
 def _judge_model_id() -> str:
     return (
-        os.getenv("NOTES_OPENROUTER_JUDGE_MODEL", DEFAULT_OPENROUTER_JUDGE_MODEL)
-        .strip()
-        .lower()
+        os.getenv("NOTES_OPENROUTER_JUDGE_MODEL", DEFAULT_OPENROUTER_JUDGE_MODEL).strip().lower()
     )
 
 
@@ -341,11 +341,7 @@ def _benchmark_settings() -> tuple[str, tuple[tuple[str, str], ...], bool]:
 
 def _selected_scenarios() -> tuple[ToolScenario, ...]:
     selected_names_raw = os.getenv("NOTES_OPENROUTER_SCENARIOS", "")
-    selected_names = {
-        name.strip()
-        for name in selected_names_raw.split(",")
-        if name.strip()
-    }
+    selected_names = {name.strip() for name in selected_names_raw.split(",") if name.strip()}
     limit = _parse_int_env("NOTES_OPENROUTER_MAX_SCENARIOS")
 
     scenarios = NOTES_TOOL_SCENARIOS
@@ -358,19 +354,13 @@ def _selected_scenarios() -> tuple[ToolScenario, ...]:
 
 def _selected_conversations() -> tuple[ConversationScenario, ...]:
     selected_names_raw = os.getenv("NOTES_OPENROUTER_CONVERSATIONS", "")
-    selected_names = {
-        name.strip()
-        for name in selected_names_raw.split(",")
-        if name.strip()
-    }
+    selected_names = {name.strip() for name in selected_names_raw.split(",") if name.strip()}
     limit = _parse_int_env("NOTES_OPENROUTER_MAX_CONVERSATIONS")
 
     conversations = build_conversation_scenarios(NOTES_EVALUATION)
     if selected_names:
         conversations = tuple(
-            conversation
-            for conversation in conversations
-            if conversation.name in selected_names
+            conversation for conversation in conversations if conversation.name in selected_names
         )
     if limit is not None and limit >= 0:
         conversations = conversations[:limit]
@@ -485,9 +475,7 @@ class _LocalCandidateAgentAdapter:
                 " (to wygląda jak identyfikator modelu hosted/OpenRouter, a nie lokalny "
                 "repozytorium MLX/HF)"
             )
-        return (
-            f"Nie udało się załadować lokalnego modelu MLX/HF: {self._model_id}{hint}"
-        )
+        return f"Nie udało się załadować lokalnego modelu MLX/HF: {self._model_id}{hint}"
 
 
 class _LenientOpenRouterJudge(DeepEvalBaseLLM):
@@ -514,7 +502,7 @@ class _LenientOpenRouterJudge(DeepEvalBaseLLM):
         )
         super().__init__(model=model)
 
-    def load_model(self) -> "_LenientOpenRouterJudge":
+    def load_model(self) -> _LenientOpenRouterJudge:
         return self
 
     def get_model_name(self) -> str:
@@ -763,7 +751,7 @@ def _install_model_for_notes_agent(
     adapter: _LocalCandidateAgentAdapter,
 ) -> None:
     @contextmanager
-    def fake_session(name: str = "model"):  # noqa: ARG001
+    def fake_session(name: str = "model"):
         yield adapter
 
     monkeypatch.setattr(
@@ -840,7 +828,9 @@ def _build_conversation_trace(
     called_tools: list[ToolCall],
 ) -> dict[str, Any]:
     children: list[dict[str, Any]] = []
-    for idx, (step, output) in enumerate(zip(conversation.steps, turn_outputs, strict=False), start=1):
+    for idx, (step, output) in enumerate(
+        zip(conversation.steps, turn_outputs, strict=False), start=1
+    ):
         matched_call = called_tools[idx - 1] if idx - 1 < len(called_tools) else None
         if matched_call is not None and matched_call.name != "__missing_tool__":
             children.append(
@@ -904,9 +894,7 @@ def _run_conversation(
 
     try:
         for step in conversation.steps:
-            expected_tools.append(
-                ToolCall(name=step.tool_name, input_parameters=step.parameters)
-            )
+            expected_tools.append(ToolCall(name=step.tool_name, input_parameters=step.parameters))
             model_reply = notes_manager.note_workflow._agent._agent.run(step.user_message_pl)
             output = model_reply.content or ""
             turn_outputs.append(output)
@@ -922,9 +910,7 @@ def _run_conversation(
                     exact_turn_match_count += 1
             else:
                 # Keep index alignment for trace/tool-order scoring.
-                called_tools.append(
-                    ToolCall(name="__missing_tool__", input_parameters={})
-                )
+                called_tools.append(ToolCall(name="__missing_tool__", input_parameters={}))
     except Exception as error:  # pragma: no cover - environment/model-dependent
         elapsed_ms = (time.perf_counter() - start) * 1000
         completed_turns = len(turn_outputs)
@@ -950,9 +936,7 @@ def _run_conversation(
     elapsed_ms = (time.perf_counter() - start) * 1000
     turns_total = len(conversation.steps)
     # Remove synthetic placeholders for metric input; ordering penalties are still captured by exact_turn_match_rate.
-    metric_tools_called = [
-        tool for tool in called_tools if tool.name != "__missing_tool__"
-    ]
+    metric_tools_called = [tool for tool in called_tools if tool.name != "__missing_tool__"]
     test_case = LLMTestCase(
         input="\n".join(
             f"Turn {idx}. {step.user_message_pl}"
@@ -1035,12 +1019,7 @@ def _summarize_conversation_model(
         and avg_step is not None
         and avg_task is not None
     ):
-        composite = (
-            0.35 * avg_exact_turn
-            + 0.30 * avg_tool
-            + 0.20 * avg_task
-            + 0.15 * avg_step
-        )
+        composite = 0.35 * avg_exact_turn + 0.30 * avg_tool + 0.20 * avg_task + 0.15 * avg_step
 
     status = "ok" if completed else "failed"
     return ConversationModelBenchmarkSummary(
@@ -1091,7 +1070,9 @@ def _run_single_scenario(
     try:
         _reset_and_prefill(notes_manager, scenario)
         model_reply = notes_manager.note_workflow._agent._agent.run(scenario.user_message_pl)
-    except Exception as error:  # pragma: no cover - network/provider failures are environment-dependent
+    except (
+        Exception
+    ) as error:  # pragma: no cover - network/provider failures are environment-dependent
         elapsed_ms = (time.perf_counter() - start) * 1000
         return ScenarioBenchmarkResult(
             scenario_name=scenario.name,
@@ -1119,8 +1100,7 @@ def _run_single_scenario(
         called_tool_name, called_parameters = model_reply.tool_call
 
     exact_match = (
-        called_tool_name == scenario.tool_name
-        and called_parameters == scenario.parameters
+        called_tool_name == scenario.tool_name and called_parameters == scenario.parameters
     )
 
     test_case = _build_tool_test_case(
@@ -1168,11 +1148,7 @@ def _summarize_model(
     failures = [result for result in scenario_results if result.error is not None]
 
     exact_match_count = sum(1 for result in completed if result.exact_tool_match)
-    exact_match_rate = (
-        exact_match_count / len(completed)
-        if completed
-        else None
-    )
+    exact_match_rate = exact_match_count / len(completed) if completed else None
 
     avg_tool = _avg(
         [
@@ -1199,11 +1175,7 @@ def _summarize_model(
 
     composite = None
     if exact_match_rate is not None and avg_task is not None and avg_step is not None:
-        composite = (
-            0.60 * exact_match_rate
-            + 0.25 * avg_task
-            + 0.15 * avg_step
-        )
+        composite = 0.60 * exact_match_rate + 0.25 * avg_task + 0.15 * avg_step
 
     status = "ok" if completed else "failed"
     error = failures[0].error if failures and not completed else None
@@ -1273,11 +1245,7 @@ def _make_report_payload(
 
 def _selected_prompt_cases() -> tuple[PromptStyleCase, ...]:
     selected_names_raw = os.getenv("NOTES_OPENROUTER_PROMPT_CASES", "")
-    selected_names = {
-        name.strip()
-        for name in selected_names_raw.split(",")
-        if name.strip()
-    }
+    selected_names = {name.strip() for name in selected_names_raw.split(",") if name.strip()}
     limit = _parse_int_env("NOTES_OPENROUTER_MAX_PROMPT_CASES")
 
     cases = PROMPT_STYLE_CASES
@@ -1292,9 +1260,7 @@ def _default_prompt_cases_report_path() -> Path:
     report_env = os.getenv("NOTES_OPENROUTER_PROMPT_REPORT_PATH")
     if report_env and report_env.strip():
         return Path(report_env).expanduser()
-    return Path(
-        "packages/evaluation/src/evaluation/notes_openrouter_prompt_cases_report.json"
-    )
+    return Path("packages/evaluation/src/evaluation/notes_openrouter_prompt_cases_report.json")
 
 
 def _default_conversation_report_path() -> Path:
@@ -1428,11 +1394,7 @@ def _summarize_prompt_case_model(
     ok_results = [result for result in results if result["error"] is None]
     failed_results = [result for result in results if result["error"] is not None]
     avg_g_eval = _avg(
-        [
-            result["g_eval_score"]
-            for result in ok_results
-            if result["g_eval_score"] is not None
-        ]
+        [result["g_eval_score"] for result in ok_results if result["g_eval_score"] is not None]
     )
     avg_task = _avg(
         [
@@ -1458,11 +1420,7 @@ def _summarize_prompt_case_model(
         "composite_score": _round_or_none(composite),
         "status": "ok" if ok_results else "failed",
         "failed_cases": [result["case_name"] for result in failed_results],
-        "error": (
-            failed_results[0]["error"]
-            if failed_results and not ok_results
-            else None
-        ),
+        "error": (failed_results[0]["error"] if failed_results and not ok_results else None),
     }
 
 
@@ -1531,13 +1489,13 @@ def test_notes_candidate_models_benchmark(notes_manager, monkeypatch) -> None:
         for scenario in scenarios:
             scenario_results.append(
                 _run_single_scenario(
-                notes_manager=notes_manager,
-                scenario=scenario,
-                adapter=adapter,
-                requested_model_id=requested_model_id,
-                tool_metric=tool_metric,
-                step_metric=step_metric,
-                task_metric=task_metric,
+                    notes_manager=notes_manager,
+                    scenario=scenario,
+                    adapter=adapter,
+                    requested_model_id=requested_model_id,
+                    tool_metric=tool_metric,
+                    step_metric=step_metric,
+                    task_metric=task_metric,
                 )
             )
 
@@ -1563,9 +1521,7 @@ def test_notes_candidate_models_benchmark(notes_manager, monkeypatch) -> None:
         report_path=_default_report_path(),
     )
 
-    successful_summaries = [
-        summary for summary in summaries if summary.status == "ok"
-    ]
+    successful_summaries = [summary for summary in summaries if summary.status == "ok"]
     assert successful_summaries, (
         "Żaden model nie został poprawnie oceniony. "
         "Sprawdź lokalne ładowanie modeli MLX/HF (np. zgodność z `mlx_lm`) oraz "

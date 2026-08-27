@@ -1,21 +1,29 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import os
+from typing import ClassVar
 
 from agentic.core_agent import CoreAgentic
-from providers.models import ModelConfig
 from agentic.prompts import ChatPromptBuilder, QwenPromptBuilder
 from agentic.workflow import (
     LLMReactor,
-    UserMessage,
     dispatch_output_handlers,
     make_llm_routing,
+    message_text,
+    reply_metadata,
     run_workflow,
+    user_message,
     workflow_output_handler,
 )
-from agentic.workflow.messages import Message
+from agentic.workflow.messages import (
+    ConversationData,
+    Message,
+    RecordedMessageMetadata,
+    UserMessage,
+)
 from agentic.workflow.reactor import LLMResponse
-
+from providers.models import ModelConfig
 from workshops.tui import LabApp
 
 from .deciders import art_writer_decider, make_image_decider
@@ -33,10 +41,10 @@ class VLMReactor:
         self._agent = agent
 
     def can_handle(self, command: Message) -> bool:
-        return command.text is not None and len(command.text) > 0
+        return bool(message_text(command))
 
     def invoke(self, command: Message) -> Message:
-        text = command.text or ""
+        text = message_text(command)
         images: str | list[str] | None = None
         if isinstance(command, ImageMessage) and command.image_path:
             images = [command.image_path]
@@ -45,21 +53,17 @@ class VLMReactor:
 
         response = self._agent.respond(text, images=images)
 
+        metadata = reply_metadata(command, source="vlm")
         return LLMResponse(
-            text=response.output,
-            domain=command.domain,
-            source="vlm",
-            reply_to_message_id=command.message_id or None,
-            runtime_id=command.runtime_id,
-            turn_id=command.turn_id,
-            agent_run_id=response.result.run_id,
+            data=ConversationData(role="assistant", text=response.output),
+            metadata=replace(metadata, agent_run_id=response.result.run_id),
         )
 
 
 class Lab5App(LabApp):
     lab_title = "Lab 5 — Vision: Image Summary → Art"
     lab_subtitle = "Multimodal event-driven flow"
-    lab_info = [
+    lab_info: ClassVar[list[str]] = [
         f"VLM: {VLM_MODEL_ID}",
         f"LLM: {TEXT_MODEL_ID}",
         "",
@@ -90,11 +94,11 @@ class Lab5App(LabApp):
             self.write_activity("Event", "ImageDescribed → Art Writer", style="#ff9e64")
             self.set_status("Art Writer creating...")
             execution = run_workflow(
-                message=UserMessage(
-                    text=f"Write a creative piece inspired by this image description:\n{message.description}",
-                    runtime_id=message.runtime_id,
-                    turn_id=message.turn_id,
+                message=user_message(
+                    "Write a creative piece inspired by this image description:\n"
+                    f"{message.description}",
                     source="image_summary",
+                    reply_to=message,
                 ),
                 decider=art_writer_decider,
                 routing_fn=self._art_routing,
@@ -120,9 +124,13 @@ class Lab5App(LabApp):
 
         if image_path:
             self.write_activity("Input", f"Image: {os.path.basename(image_path)}", style="#7aa2f7")
-            msg: UserMessage = ImageMessage(text=text, image_path=image_path, source="user")
+            msg: UserMessage = ImageMessage(
+                data=ConversationData(role="user", text=text),
+                metadata=RecordedMessageMetadata(source="user"),
+                image_path=image_path,
+            )
         else:
-            msg = UserMessage(text=text, source="user")
+            msg = user_message(text, source="user")
 
         self.set_status("VLM analyzing image...")
         self.write_activity("Summarizer", "Analyzing image...", style="#9ece6a")

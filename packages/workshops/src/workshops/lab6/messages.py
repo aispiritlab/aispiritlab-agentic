@@ -3,12 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import Any
 
-from agentic.workflow.messages import Event, Message, RecordedMessageMetadata
-from agentic_runtime.distributed import register_record_types
+from agentic.workflow import register_record_contract
+from agentic.workflow.messages import Event, Message, RecordedMessageMetadata, UserCommand
 
 
-def _metadata_with_updates(metadata: RecordedMessageMetadata, **updates: Any) -> RecordedMessageMetadata:
-    values = {field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)}
+def _metadata_with_updates(
+    metadata: RecordedMessageMetadata, **updates: Any
+) -> RecordedMessageMetadata:
+    values = {
+        field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)
+    }
     values.update(updates)
     return RecordedMessageMetadata(**values)
 
@@ -34,12 +38,13 @@ class SearchPlanned(Event):
         super().__init__(
             kind="search_planned",
             type="search_planned",
-            data=data or {
+            data=data
+            or {
                 "question": question,
                 "queries": list(normalized_queries),
                 "reply_target": reply_target,
             },
-            metadata=metadata or RecordedMessageMetadata(domain="lab6", target="search"),
+            metadata=metadata or RecordedMessageMetadata(domain="lab6"),
         )
 
     @property
@@ -84,13 +89,14 @@ class SearchResultsFetched(Event):
         super().__init__(
             kind="search_results_fetched",
             type="search_results_fetched",
-            data=data or {
+            data=data
+            or {
                 "question": question,
                 "queries": list(normalized_queries),
                 "results": list(normalized_results),
                 "reply_target": reply_target,
             },
-            metadata=metadata or RecordedMessageMetadata(domain="lab6", target="summary"),
+            metadata=metadata or RecordedMessageMetadata(domain="lab6"),
         )
 
     @property
@@ -126,7 +132,56 @@ class SearchResultsFetched(Event):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True, init=False)
-class SummaryRequested(Event):
+class SearchRequested(UserCommand):
+    def __init__(
+        self,
+        *,
+        data: dict[str, Any] | None = None,
+        question: str = "",
+        queries: tuple[str, ...] = (),
+        reply_target: str = "chat",
+        metadata: RecordedMessageMetadata | None = None,
+    ) -> None:
+        normalized_queries = tuple(str(query) for query in queries)
+        super().__init__(
+            kind="command",
+            type="search_requested",
+            data=data
+            or {
+                "question": question,
+                "queries": list(normalized_queries),
+                "reply_target": reply_target,
+            },
+            metadata=metadata or RecordedMessageMetadata(domain="lab6", target="search"),
+        )
+
+    @property
+    def question(self) -> str:
+        return str(self.data.get("question", ""))
+
+    @property
+    def queries(self) -> tuple[str, ...]:
+        raw_queries = self.data.get("queries", [])
+        if not isinstance(raw_queries, list | tuple):
+            return ()
+        return tuple(str(query) for query in raw_queries)
+
+    @property
+    def reply_target(self) -> str:
+        return str(self.data.get("reply_target", "chat"))
+
+    def with_metadata(self, **updates: Any) -> Message:
+        return SearchRequested(
+            data=dict(self.data),
+            metadata=_metadata_with_updates(self.metadata, **updates),
+        )
+
+    def with_data(self, **updates: Any) -> Message:
+        return SearchRequested(data={**self.data, **updates}, metadata=self.metadata)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True, init=False)
+class SummaryRequested(UserCommand):
     def __init__(
         self,
         *,
@@ -140,9 +195,10 @@ class SummaryRequested(Event):
         normalized_queries = tuple(str(query) for query in queries)
         normalized_results = _normalize_results(results)
         super().__init__(
-            kind="summary_requested",
+            kind="command",
             type="summary_requested",
-            data=data or {
+            data=data
+            or {
                 "question": question,
                 "queries": list(normalized_queries),
                 "results": list(normalized_results),
@@ -183,4 +239,7 @@ class SummaryRequested(Event):
         return SummaryRequested(data={**self.data, **updates}, metadata=self.metadata)
 
 
-register_record_types(SearchPlanned, SearchResultsFetched, SummaryRequested)
+register_record_contract(SearchPlanned, "lab6.search-planned")
+register_record_contract(SearchRequested, "lab6.search-requested")
+register_record_contract(SearchResultsFetched, "lab6.search-results-fetched")
+register_record_contract(SummaryRequested, "lab6.summary-requested")

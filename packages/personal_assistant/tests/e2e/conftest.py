@@ -4,12 +4,12 @@ import json
 import os
 from typing import Any
 
-import pytest
-from providers.orchestrator import ModelProvider
 from deepeval.metrics import StepEfficiencyMetric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase
+import pytest
 
+from providers.orchestrator import ModelProvider
 from registry.prompts import (
     DECISION_PROMPT,
     DISCOVERY_NOTES_PROMPT,
@@ -144,7 +144,7 @@ def _extract_trace_from_efficiency_prompt(prompt: str) -> dict[str, Any]:
 
 
 class _DeterministicEvalJudge(DeepEvalBaseLLM):
-    def load_model(self) -> "_DeterministicEvalJudge":
+    def load_model(self) -> _DeterministicEvalJudge:
         return self
 
     def generate(self, prompt: str, schema=None) -> Any:
@@ -160,9 +160,7 @@ class _DeterministicEvalJudge(DeepEvalBaseLLM):
             child_spans = trace.get("children", []) if isinstance(trace, dict) else []
             score = 1.0 if len(child_spans) <= 1 else 0.5
             reason = (
-                "Agent wykonał konieczne kroki."
-                if score == 1.0
-                else "Wykryto nadmiarowe kroki."
+                "Agent wykonał konieczne kroki." if score == 1.0 else "Wykryto nadmiarowe kroki."
             )
             return schema(score=score, reason=reason)
 
@@ -242,6 +240,4 @@ def assert_step_efficiency(
         parameters=parameters,
     )
     score = metric.measure(test_case)
-    assert score >= threshold, (
-        f"StepEfficiencyMetric score {score} < threshold {threshold}"
-    )
+    assert score >= threshold, f"StepEfficiencyMetric score {score} < threshold {threshold}"

@@ -7,12 +7,13 @@ at the root level is migrated to ``users/default/`` on first access.
 
 from __future__ import annotations
 
-import json
-import re
-import shutil
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+import json
 from pathlib import Path
+import shutil
+
+from agentic_runtime.slugs import resolve_child, slugify, validate_slug
 
 _ROOT = Path.home() / ".aispiritagent"
 _USERS_INDEX = _ROOT / "users.json"
@@ -28,12 +29,11 @@ class UserProfile:
 
 
 def _slugify(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-    return slug or "user"
+    return slugify(name, fallback="user")
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _read_index() -> list[UserProfile]:
@@ -41,7 +41,7 @@ def _read_index() -> list[UserProfile]:
         return []
     try:
         raw = json.loads(_USERS_INDEX.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return []
     if not isinstance(raw, list):
         return []
@@ -61,8 +61,11 @@ def _write_index(users: list[UserProfile]) -> None:
 
 
 def user_dir(slug: str) -> Path:
-    """Return the directory for a given user slug."""
-    return _USERS_DIR / slug
+    """Return the directory for a given user slug.
+
+    Raises ``InvalidSlugError`` if the slug is not a safe path segment.
+    """
+    return resolve_child(_USERS_DIR, slug, kind="user slug")
 
 
 def personalization_path(slug: str) -> Path:
@@ -112,14 +115,22 @@ def _create_user_internal(name: str, slug: str) -> UserProfile:
 
 
 def delete_user(slug: str) -> None:
-    """Delete a user and their directory. Cannot delete the last user."""
+    """Delete a registered user and their directory.
+
+    Refuses unknown slugs and the last remaining user, so the recursive delete
+    below can only ever target a directory this module created.
+    """
+    validate_slug(slug, kind="user slug")
     users = _read_index()
+    if not any(u.slug == slug for u in users):
+        raise ValueError(f"Unknown user {slug!r}.")
+
     remaining = [u for u in users if u.slug != slug]
     if not remaining:
         raise ValueError("Cannot delete the last user.")
 
     directory = user_dir(slug)
-    if directory.exists():
+    if directory.is_dir():
         shutil.rmtree(directory)
 
     _write_index(remaining)
@@ -171,7 +182,7 @@ def _ensure_migrated() -> None:
     try:
         data = json.loads(_LEGACY_PERSONALIZATION.read_text(encoding="utf-8"))
         name = data.get("name", "Default") if isinstance(data, dict) else "Default"
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         name = "Default"
 
     profile = UserProfile(name=str(name) or "Default", slug="default", created_at=_now_iso())

@@ -30,7 +30,8 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ._tools import Tool, ToolContext
 
@@ -112,9 +113,7 @@ class PrefixedToolset(WrapperToolset):
     def __init__(self, inner: Any, prefix: str) -> None:
         super().__init__(inner)
         self._prefix = prefix
-        self._prefixed_tools = tuple(
-            _PrefixedTool(t, prefix) for t in inner.tools
-        )
+        self._prefixed_tools = tuple(_PrefixedTool(t, prefix) for t in inner.tools)
 
     @property
     def tools(self) -> tuple[Tool, ...]:
@@ -122,7 +121,7 @@ class PrefixedToolset(WrapperToolset):
 
     def has_tool(self, function_name: str) -> bool:
         if function_name.startswith(self._prefix):
-            original = function_name[len(self._prefix):]
+            original = function_name[len(self._prefix) :]
             return self._inner.has_tool(original)
         return False
 
@@ -134,7 +133,7 @@ class PrefixedToolset(WrapperToolset):
         tool_context: ToolContext | None = None,
     ) -> Any:
         if function_name.startswith(self._prefix):
-            original = function_name[len(self._prefix):]
+            original = function_name[len(self._prefix) :]
             return self._inner.execute(original, parameters, tool_context=tool_context)
         raise ValueError(f"Tool '{function_name}' does not match prefix '{self._prefix}'")
 
@@ -176,7 +175,9 @@ class _PrefixedTool:
     def call(self, parameters: dict[str, Any], *, tool_context: ToolContext | None = None) -> Any:
         return self._tool.call(parameters, tool_context=tool_context)
 
-    async def acall(self, parameters: dict[str, Any], *, tool_context: ToolContext | None = None) -> Any:
+    async def acall(
+        self, parameters: dict[str, Any], *, tool_context: ToolContext | None = None
+    ) -> Any:
         return await self._tool.acall(parameters, tool_context=tool_context)
 
     def create_command(self, parameters: dict[str, Any]) -> Any:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agentic_runtime.messaging.messages import (  # noqa: F401
+from agentic_runtime.messaging.messages import (
     AssistantMessage,
     Command,
     Conversation,

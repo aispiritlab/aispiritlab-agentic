@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from providers.client._http_client import HttpClient, ModelConnectionError
+from providers.api.http_client import HttpClient, ModelConnectionError
 
 
 @pytest.fixture

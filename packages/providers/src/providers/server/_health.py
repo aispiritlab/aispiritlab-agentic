@@ -33,7 +33,7 @@ async def wait_for_healthy(
                     logger.info("server_healthy", url=base_url)
                     return
                 logger.debug("health_check_not_ready", status=response.status_code)
-        except (httpx.ConnectError, httpx.ReadError, httpx.TimeoutException):
+        except httpx.ConnectError, httpx.ReadError, httpx.TimeoutException:
             logger.debug("health_check_connection_failed", url=url)
 
         if asyncio.get_event_loop().time() >= deadline:

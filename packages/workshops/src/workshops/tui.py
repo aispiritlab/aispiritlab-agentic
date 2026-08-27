@@ -7,23 +7,21 @@ transcript, an activity/events sidebar, and a composer input area.
 
 from __future__ import annotations
 
-import threading
 from abc import abstractmethod
 from collections.abc import Callable, Sequence
-from typing import Any
+from pathlib import Path
+import threading
+from typing import Any, ClassVar
 
 from rich import box
 from rich.markdown import Markdown as RichMarkdown
 from rich.panel import Panel
 from rich.text import Text
-from pathlib import Path
-
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, DirectoryTree, Footer, Header, RichLog, Static, TextArea
-
 
 # ---------------------------------------------------------------------------
 # Dark colour palette
@@ -50,7 +48,7 @@ _ACCENT_SYSTEM = "#565f89"
 class FileBrowserScreen(ModalScreen[str | None]):
     """Modal file browser. Returns the selected file path or None on cancel."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("escape", "cancel", "Cancel"),
     ]
 
@@ -138,9 +136,9 @@ class LabApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
 
     # -- Subclass configuration ------------------------------------------------
-    lab_title: str = "Workshop Lab"
-    lab_subtitle: str = ""
-    lab_info: Sequence[str] = ()
+    lab_title: ClassVar[str] = "Workshop Lab"
+    lab_subtitle: ClassVar[str] = ""
+    lab_info: ClassVar[Sequence[str]] = ()
 
     CSS = f"""
     Screen {{
@@ -254,7 +252,7 @@ class LabApp(App[None]):
     }}
     """
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("ctrl+enter", "send", "Send"),
         Binding("escape", "focus_composer", "Composer"),
     ]
@@ -479,7 +477,11 @@ class LabApp(App[None]):
 
         display_text = prompt or ""
         if attached:
-            display_text = f"{prompt}\n[file: {Path(attached).name}]" if prompt else f"[file: {Path(attached).name}]"
+            display_text = (
+                f"{prompt}\n[file: {Path(attached).name}]"
+                if prompt
+                else f"[file: {Path(attached).name}]"
+            )
 
         self._append_panel(
             title="You",

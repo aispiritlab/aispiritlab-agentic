@@ -58,7 +58,7 @@ class VLLMProvider(ProviderProto):
 
     @classmethod
     def _load_ray_backend(cls, model_name: str) -> object:
-        from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 
         config = vLLMEngineProcessorConfig(
             model_source=model_name,
@@ -66,11 +66,11 @@ class VLLMProvider(ProviderProto):
         )
         return build_processor(
             config,
-            preprocess=lambda row: dict(
-                messages=[{"role": "user", "content": row["prompt"]}],
-                sampling_params={"max_tokens": 512},
-            ),
-            postprocess=lambda row: dict(generated_text=row["generated_text"]),
+            preprocess=lambda row: {
+                "messages": [{"role": "user", "content": row["prompt"]}],
+                "sampling_params": {"max_tokens": 512},
+            },
+            postprocess=lambda row: {"generated_text": row["generated_text"]},
         )
 
     @classmethod

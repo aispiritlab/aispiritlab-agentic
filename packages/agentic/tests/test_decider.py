@@ -1,28 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import pytest
 
 from agentic.workflow.decider import (
-    CommandHandlerResult,
-    DeciderSpecification,
     Decider,
+    DeciderSpecification,
     IllegalStateError,
     handle_command,
 )
 from agentic.workflow.event_store import (
     ConcurrencyConflictError,
     InMemoryEventStore,
-    STREAM_DOES_NOT_EXIST,
 )
 from agentic.workflow.messages import Event
-
 
 # ---------------------------------------------------------------------------
 # Domain model: Shopping Cart
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True, slots=True)
 class EmptyCart:
@@ -45,6 +43,7 @@ type CartState = EmptyCart | OpenedCart | ClosedCart
 
 # --- Commands (plain frozen dataclasses) ---
 
+
 @dataclass(frozen=True, slots=True)
 class AddItem:
     cart_id: str
@@ -64,11 +63,13 @@ class ConfirmCart:
 
 # --- Events ---
 
+
 def _event(event_type: str, **data: object) -> Event:
     return Event(type=event_type, data=dict(data))
 
 
 # --- Evolve ---
+
 
 def evolve(state: CartState, event: Event) -> CartState:
     match event.type:
@@ -87,6 +88,7 @@ def evolve(state: CartState, event: Event) -> CartState:
 
 
 # --- Decide ---
+
 
 def decide(command: AddItem | RemoveItem | ConfirmCart, state: CartState) -> Sequence[Event]:
     match command:
@@ -283,45 +285,31 @@ class TestDeciderSpecification:
         self.spec = DeciderSpecification.for_decider(cart_decider)
 
     def test_given_empty_when_add_then_item_added(self) -> None:
-        self.spec.given().when(
-            AddItem("c1", "shoes")
-        ).then(
-            _event("item_added", item="shoes")
-        )
+        self.spec.given().when(AddItem("c1", "shoes")).then(_event("item_added", item="shoes"))
 
     def test_given_item_when_confirm_then_confirmed(self) -> None:
         self.spec.given(
             _event("item_added", item="shoes"),
-        ).when(
-            ConfirmCart("c1")
-        ).then(
-            _event("cart_confirmed")
-        )
+        ).when(ConfirmCart("c1")).then(_event("cart_confirmed"))
 
     def test_given_confirmed_when_add_then_throws(self) -> None:
         self.spec.given(
             _event("item_added", item="shoes"),
             _event("cart_confirmed"),
-        ).when(
-            AddItem("c1", "hat")
-        ).then_throws(IllegalStateError, match="closed cart")
+        ).when(AddItem("c1", "hat")).then_throws(IllegalStateError, match="closed cart")
 
     def test_given_empty_when_confirm_then_throws(self) -> None:
-        self.spec.given().when(
-            ConfirmCart("c1")
-        ).then_throws(IllegalStateError, match="non-opened")
+        self.spec.given().when(ConfirmCart("c1")).then_throws(
+            IllegalStateError, match="non-opened"
+        )
 
     def test_given_items_when_remove_then_removed(self) -> None:
         self.spec.given(
             _event("item_added", item="shoes"),
             _event("item_added", item="hat"),
-        ).when(
-            RemoveItem("c1", "shoes")
-        ).then(
-            _event("item_removed", item="shoes")
-        )
+        ).when(RemoveItem("c1", "shoes")).then(_event("item_removed", item="shoes"))
 
     def test_given_empty_when_remove_then_throws(self) -> None:
-        self.spec.given().when(
-            RemoveItem("c1", "shoes")
-        ).then_throws(IllegalStateError, match="non-opened")
+        self.spec.given().when(RemoveItem("c1", "shoes")).then_throws(
+            IllegalStateError, match="non-opened"
+        )

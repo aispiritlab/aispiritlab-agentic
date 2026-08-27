@@ -4,17 +4,14 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from agentic.message import UserMessage
-from agentic.prompts import GemmaPromptBuilder
-from agentic.prompts import QwenPromptBuilder
+from agentic.prompts import GemmaPromptBuilder, QwenPromptBuilder
 from agentic.tools import Toolsets
 from evaluation import EvaluationDefinition, ToolScenario, serialize_scenarios_to_json
-
 from personal_assistant.settings import settings
 
 from .flows import DEFAULT_NOTE_FLOWS
 from .manage_notes_agent import ManageNotesAgent
 from .tools import toolset as manage_notes_toolset
-
 
 NOTES_TOOL_SCENARIOS: tuple[ToolScenario, ...] = (
     ToolScenario(
@@ -142,36 +139,28 @@ NOTES_TOOL_SCENARIOS: tuple[ToolScenario, ...] = (
         user_message="odczytaj te notatke",
         tool_name="get_note",
         parameters={"note_name": "super"},
-        prefill_messages=(
-            "Utworz notatke super z tsrtrststdbvstb",
-        ),
+        prefill_messages=("Utworz notatke super z tsrtrststdbvstb",),
     ),
     ToolScenario(
         name="edit_this_note_from_context",
         user_message="edytuj te notatke dopisz abc",
         tool_name="edit_note",
         parameters={"note_name": "super", "note": "abc"},
-        prefill_messages=(
-            "Utworz notatke super z tsrtrststdbvstb",
-        ),
+        prefill_messages=("Utworz notatke super z tsrtrststdbvstb",),
     ),
     ToolScenario(
         name="read_last_note_from_context",
         user_message="pokaz ostatnia notatke",
         tool_name="get_note",
         parameters={"note_name": "super"},
-        prefill_messages=(
-            "Utworz notatke super z tsrtrststdbvstb",
-        ),
+        prefill_messages=("Utworz notatke super z tsrtrststdbvstb",),
     ),
     ToolScenario(
         name="read_last_note_from_context_diacritics_masterox",
         user_message="Wyświetl ostatnią notatkę.",
         tool_name="get_note",
         parameters={"note_name": "Masterox"},
-        prefill_messages=(
-            'Dodaj notatkę z nazwą Masterox o treści "Tsrtrst"Trstrst',
-        ),
+        prefill_messages=('Dodaj notatkę z nazwą Masterox o treści "Tsrtrst"Trstrst',),
     ),
     ToolScenario(
         name="edit_last_note_from_context",
@@ -259,9 +248,7 @@ class NotesAgentEvalCallback:
             else ""
         )
         message_with_history = "\n".join(
-            turn
-            for turn in [history_text, UserMessage(user_input).as_turn()]
-            if turn
+            turn for turn in [history_text, UserMessage(user_input).as_turn()] if turn
         )
         prompt = agent.system_prompt.build_prompt(
             message_with_history,

@@ -1,6 +1,13 @@
 """Chat — reusable Gradio UI building blocks for agent applications."""
 
-from .app import ChatAppConfig, install_shutdown_handlers, launch, restore_shutdown_handlers
+from .app import (
+    ChatAppConfig,
+    InsecureExposureError,
+    install_shutdown_handlers,
+    launch,
+    parse_auth,
+    restore_shutdown_handlers,
+)
 from .components import (
     ChatHistory,
     ChatMessage,
@@ -18,6 +25,7 @@ __all__ = [
     "ChatAppConfig",
     "ChatHistory",
     "ChatMessage",
+    "InsecureExposureError",
     "MultimodalMessage",
     "add_message",
     "append_voice_response",
@@ -28,5 +36,6 @@ __all__ = [
     "launch",
     "message_files",
     "message_prompt_text",
+    "parse_auth",
     "restore_shutdown_handlers",
 ]

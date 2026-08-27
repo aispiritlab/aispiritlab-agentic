@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, Sequence
+from typing import Protocol
 
 from providers.api.http_client import HttpClient
 
@@ -68,10 +69,7 @@ class LangSearchProvider:
                     title=str(page.get("name", "")).strip(),
                     url=str(page.get("url", "")).strip(),
                     snippet=str(
-                        page.get("summary")
-                        or page.get("snippet")
-                        or page.get("description")
-                        or ""
+                        page.get("summary") or page.get("snippet") or page.get("description") or ""
                     ).strip(),
                     published_at=(
                         str(page["datePublished"]).strip()

@@ -8,11 +8,13 @@ from queue import Empty, Queue
 import sqlite3
 import threading
 import time
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 import orjson
 
+from agentic.workflow.messages import normalize_recorded_message
 from agentic_runtime.messaging.messages import Message
+from agentic_runtime.messaging.streaming import hash_text
 from agentic_runtime.storage.projections import (
     DEFAULT_PROJECTIONS,
     ConversationRecordRow,
@@ -21,15 +23,12 @@ from agentic_runtime.storage.projections import (
     handle_projections,
     row_to_conversation_record,
 )
-from agentic_runtime.messaging.streaming import hash_text
 
 
 class MessageStore(Protocol):
-    def enqueue(self, message: Message) -> None:
-        ...
+    def enqueue(self, message: Message) -> None: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 @dataclass
@@ -100,7 +99,7 @@ class ChunkAssembly:
 
 
 class SQLiteMessageStore:
-    _MESSAGE_STREAM_COLUMNS: dict[str, str] = {
+    _MESSAGE_STREAM_COLUMNS: ClassVar[dict[str, str]] = {
         "event_id": "TEXT",
         "runtime_id": "TEXT NOT NULL",
         "session_id": "TEXT",
@@ -135,7 +134,7 @@ class SQLiteMessageStore:
         "loop_iteration": "INTEGER",
         "created_at_ns": "INTEGER NOT NULL",
     }
-    _CONVERSATION_RECORD_COLUMNS: dict[str, str] = {
+    _CONVERSATION_RECORD_COLUMNS: ClassVar[dict[str, str]] = {
         "message_id": "TEXT PRIMARY KEY",
         "runtime_id": "TEXT NOT NULL",
         "session_id": "TEXT",
@@ -236,6 +235,11 @@ class SQLiteMessageStore:
         created_at_ns INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS message_record_ids (
+        event_id TEXT PRIMARY KEY,
+        first_seen_ns INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_message_stream_runtime
     ON message_stream(runtime_id);
 
@@ -306,7 +310,7 @@ class SQLiteMessageStore:
             raise RuntimeError("SQLite message writer failed.") from self._writer_error
         if self._closed:
             raise RuntimeError("SQLite message writer is closed.")
-        self._queue.put(message)
+        self._queue.put(normalize_recorded_message(message))
 
     def close(self) -> None:
         with self._close_lock:
@@ -329,6 +333,15 @@ class SQLiteMessageStore:
                 "conversation_records",
                 self._CONVERSATION_RECORD_COLUMNS,
             )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO message_record_ids (event_id, first_seen_ns)
+                SELECT event_id, MIN(created_at_ns)
+                FROM message_stream
+                WHERE event_id IS NOT NULL AND event_id <> ''
+                GROUP BY event_id
+                """
+            )
             connection.commit()
 
     @staticmethod
@@ -338,17 +351,12 @@ class SQLiteMessageStore:
         columns: dict[str, str],
     ) -> None:
         existing_columns = {
-            row[1]
-            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+            row[1] for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
         }
         for column_name, column_type in columns.items():
             if column_name in existing_columns:
                 continue
-            safe_column_type = (
-                column_type
-                .replace(" PRIMARY KEY", "")
-                .replace(" NOT NULL", "")
-            )
+            safe_column_type = column_type.replace(" PRIMARY KEY", "").replace(" NOT NULL", "")
             connection.execute(
                 f"ALTER TABLE {table_name} ADD COLUMN {column_name} {safe_column_type}"
             )
@@ -432,6 +440,22 @@ class SQLiteMessageStore:
             if row is not None:
                 rows.append(row)
         if not rows:
+            return
+
+        unique_rows: list[MessageRow] = []
+        for row in rows:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO message_record_ids (event_id, first_seen_ns)
+                VALUES (?, ?)
+                """,
+                (row.event_id, row.created_at_ns),
+            )
+            if cursor.rowcount == 1:
+                unique_rows.append(row)
+        rows = unique_rows
+        if not rows:
+            connection.commit()
             return
 
         connection.executemany(

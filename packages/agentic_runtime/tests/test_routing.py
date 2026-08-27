@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from agentic_runtime.messaging.messages import AssistantMessage, ConversationData, Event, Message, UserMessage
+from agentic_runtime.messaging.messages import (
+    AssistantMessage,
+    ConversationData,
+    Event,
+    Message,
+    UserMessage,
+)
 from agentic_runtime.reactor import LLMResponse
 from agentic_runtime.routing import make_llm_routing
 
@@ -22,7 +28,9 @@ class TestMakeLLMRouting:
 
     def test_assistant_message_returns_none(self) -> None:
         routing = make_llm_routing(FakeReactor())
-        assert routing(AssistantMessage(data=ConversationData(role="assistant", text="hi"))) is None
+        assert (
+            routing(AssistantMessage(data=ConversationData(role="assistant", text="hi"))) is None
+        )
 
     def test_event_returns_none(self) -> None:
         routing = make_llm_routing(FakeReactor())

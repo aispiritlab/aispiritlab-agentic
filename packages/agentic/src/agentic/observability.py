@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-import logging
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+import contextvars
+from dataclasses import dataclass, field
 import threading
 import time
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator, Literal, Mapping, Protocol
+from typing import Any, Literal, Protocol
 
-logger = logging.getLogger(__name__)
+from structlog import get_logger
 
 from providers.models.response import ModelResponse
+
+logger = get_logger(__name__)
 
 
 def _sanitize_tags(tags: Mapping[str, Any] | None) -> dict[str, str]:
@@ -155,14 +158,24 @@ def build_trace_snapshot(
     span_name: str | None = None,
     span_type: str | None = None,
 ) -> TraceSnapshot | None:
-    resolved_trace_id = trace.trace_id if trace is not None and trace.trace_id else (trace_id or "")
+    resolved_trace_id = (
+        trace.trace_id if trace is not None and trace.trace_id else (trace_id or "")
+    )
     resolved_span_id = trace.span_id if trace is not None and trace.span_id else (span_id or "")
     resolved_parent_span_id = (
-        trace.parent_span_id if trace is not None and trace.parent_span_id else (parent_span_id or "")
+        trace.parent_span_id
+        if trace is not None and trace.parent_span_id
+        else (parent_span_id or "")
     )
-    resolved_span_name = trace.span_name if trace is not None and trace.span_name else (span_name or "")
-    resolved_span_type = trace.span_type if trace is not None and trace.span_type else (span_type or "")
-    resolved_session_id = trace.session_id if trace is not None and trace.session_id else session_id
+    resolved_span_name = (
+        trace.span_name if trace is not None and trace.span_name else (span_name or "")
+    )
+    resolved_span_type = (
+        trace.span_type if trace is not None and trace.span_type else (span_type or "")
+    )
+    resolved_session_id = (
+        trace.session_id if trace is not None and trace.session_id else session_id
+    )
 
     if not any(
         (
@@ -337,8 +350,15 @@ class MlflowLLMTracer:
         self.terminate_on_flush = terminate_on_flush
         self._tracking_uri = tracking_uri
         self._content_mode: ContentMode = content_mode
-        self._summary_state = threading.local()
-        self._trace_state = threading.local()
+        # ContextVars, not thread-locals: turns hop threads via asyncio.to_thread,
+        # and a thread-local stack would be invisible on the other side.
+        self._summary_stack_var: contextvars.ContextVar[list[_SummaryFrame]] = (
+            contextvars.ContextVar(f"agentic_summary_stack_{id(self)}", default=None)  # type: ignore[arg-type]
+        )
+        self._session_stack_var: contextvars.ContextVar[list[str]] = contextvars.ContextVar(
+            f"agentic_session_stack_{id(self)}",
+            default=None,  # type: ignore[arg-type]
+        )
         self._mlflow: Any | None = None
         self._span_type_enum: Any | None = None
         try:
@@ -373,17 +393,17 @@ class MlflowLLMTracer:
         return "preview"
 
     def _summary_stack(self) -> list[_SummaryFrame]:
-        stack = getattr(self._summary_state, "stack", None)
+        stack = self._summary_stack_var.get()
         if stack is None:
             stack = []
-            self._summary_state.stack = stack
+            self._summary_stack_var.set(stack)
         return stack
 
     def _session_stack(self) -> list[str]:
-        stack = getattr(self._trace_state, "session_stack", None)
+        stack = self._session_stack_var.get()
         if stack is None:
             stack = []
-            self._trace_state.session_stack = stack
+            self._session_stack_var.set(stack)
         return stack
 
     def _push_session_id(self, session_id: str) -> None:
@@ -397,7 +417,7 @@ class MlflowLLMTracer:
         try:
             stack.remove(session_id)
         except ValueError:
-            logger.warning("Attempted to pop non-existent session_id=%s", session_id)
+            logger.warning("session_id_pop_missing", session_id=session_id)
 
     def _current_session_id(self) -> str:
         stack = self._session_stack()
@@ -629,7 +649,9 @@ class MlflowLLMTracer:
             agent_attrs["agent_id"] = agent_id
         frame = self._push_summary("agentic.agent")
         try:
-            with self._open_span(name, span_type="AGENT", input=input, attributes=agent_attrs) as span:
+            with self._open_span(
+                name, span_type="AGENT", input=input, attributes=agent_attrs
+            ) as span:
                 try:
                     yield self._wrap_handle(span)
                 finally:
@@ -649,7 +671,9 @@ class MlflowLLMTracer:
     ) -> Iterator[SpanHandle]:
         if span_type.upper() == "TOOL":
             self._record_tool_call(name, attributes)
-        with self._open_span(name, span_type=span_type, input=input, attributes=attributes) as span:
+        with self._open_span(
+            name, span_type=span_type, input=input, attributes=attributes
+        ) as span:
             yield self._wrap_handle(span)
 
     def llm(
@@ -721,7 +745,7 @@ class MlflowLLMTracer:
             return None
         try:
             span = self._mlflow.get_current_active_span()
-        except (AttributeError, RuntimeError, OSError):
+        except AttributeError, RuntimeError, OSError:
             return None
         return self._snapshot_from_span(span)
 

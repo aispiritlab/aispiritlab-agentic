@@ -4,6 +4,7 @@ Runs a workflow through the MessageConsumer and builds a WorkflowExecution
 from the resulting stream, preserving backward compatibility with the existing
 runtime bus publishing.
 """
+
 from __future__ import annotations
 
 from agentic.workflow.consumer import ConsumerConfig, MessageConsumer
@@ -70,7 +71,9 @@ def _build_execution(messages: list[Message] | tuple[Message, ...]) -> WorkflowE
     )
 
     return WorkflowExecution(
-        text=last_response.data.text if isinstance(last_response.data, ConversationData) and last_response.data.text else "",
+        text=last_response.data.text
+        if isinstance(last_response.data, ConversationData) and last_response.data.text
+        else "",
         agent_result=last_response._agent_result,
         tool_results=last_response._tool_results,
         emitted_events=tuple(domain_events),

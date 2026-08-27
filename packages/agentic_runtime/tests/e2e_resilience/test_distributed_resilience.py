@@ -12,19 +12,17 @@ Usage:
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 import os
 import random
 import threading
 import time
 import uuid
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
-from typing import Any
 
 import pytest
 
 from agentic.llm_call import LLMCall
-from providers.api import OpenAIProvider
 from agentic_runtime.distributed.client import DistributedChatClient
 from agentic_runtime.distributed.discovery import AgenticServiceDiscovery
 from agentic_runtime.distributed.in_memory_transport import (
@@ -42,6 +40,7 @@ from agentic_runtime.messaging.messages import (
     TurnCompleted,
     UserMessage,
 )
+from providers.api import OpenAIProvider
 
 # ---------------------------------------------------------------------------
 # Custom message types for the 5-agent pipeline
@@ -148,8 +147,7 @@ _EDITOR_PROMPT = (
     "Return the polished version, under 100 words."
 )
 _SUMMARIZER_PROMPT = (
-    "You are a summarizer agent. Condense the text into 1-2 sentences. "
-    "Return only the summary."
+    "You are a summarizer agent. Condense the text into 1-2 sentences. Return only the summary."
 )
 
 
@@ -415,7 +413,6 @@ def transport_env(request, llm_available):
     if request.param == "redis":
         if not _redis_available():
             pytest.skip("Redis not available at localhost:6379")
-        from redis import Redis
 
         from agentic_runtime.distributed.registry import RedisServiceRegistry
         from agentic_runtime.distributed.transport import RedisStreamsTransport

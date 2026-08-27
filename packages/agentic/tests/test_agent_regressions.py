@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from agentic.agent import Agent, AgentResult
 from agentic.capabilities import AbstractCapability, HookContext
-from agentic.core_agent import CoreAgentResponse, CoreAgentic
+from agentic.core_agent import CoreAgentic, CoreAgentResponse
 from agentic.exceptions import DEFAULT_RETRY, RetryPolicy
 from agentic.message import ToolMessage
 from agentic.prompts import GemmaPromptBuilder

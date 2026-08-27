@@ -4,12 +4,12 @@ Same goal as lab2 (planner delegates to researcher + writer), but orchestration
 uses dispatch_output_handlers instead of a manual for loop. TaskDelegated events
 flow through the output handler which routes them to the correct worker agent.
 """
+
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import ClassVar
 
 from agentic.core_agent import CoreAgentic
-from providers.models import ModelConfig
 from agentic.prompts import QwenPromptBuilder
 from agentic.specialized_agents import PlannerAgent, TaskCompleted
 from agentic.workflow import (
@@ -18,7 +18,7 @@ from agentic.workflow import (
     dispatch_output_handlers,
     make_llm_routing,
 )
-
+from providers.models import ModelConfig
 from workshops.tui import LabApp
 
 from .handlers import build_worker_dispatch_handler
@@ -30,7 +30,7 @@ MODEL_ID = "Qwen/Qwen3.5-2B"
 class Lab3App(LabApp):
     lab_title = "Lab 3 — Event-Driven Planner"
     lab_subtitle = "No for loops — pure event dispatch"
-    lab_info = [
+    lab_info: ClassVar[list[str]] = [
         f"Model: {MODEL_ID} (local, MLX)",
         "",
         "Same agents as Lab 2, but:",
@@ -56,7 +56,8 @@ class Lab3App(LabApp):
     def _on_task_completed(self, task: TaskCompleted) -> None:
         self._completed.append(task)
         self.write_activity(
-            "Completed", f"{task.target_agent}: {task.task_description[:40]}",
+            "Completed",
+            f"{task.target_agent}: {task.task_description[:40]}",
             style="#9ece6a",
         )
 
@@ -122,8 +123,7 @@ def run_lab3() -> None:
     writer.preload_model()
     agents = {"researcher": researcher, "writer": writer}
     worker_routings = {
-        name: make_llm_routing(LLMReactor(agent=agent))
-        for name, agent in agents.items()
+        name: make_llm_routing(LLMReactor(agent=agent)) for name, agent in agents.items()
     }
     print("Models loaded. Starting TUI...")
     Lab3App(planner=planner, agents=agents, worker_routings=worker_routings).run()

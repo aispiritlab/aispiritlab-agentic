@@ -5,10 +5,10 @@ from .tools import toolset as manage_notes_toolset
 
 __all__ = [
     "DEFAULT_NOTE_FLOWS",
+    "NOTES_EVALUATION",
+    "NOTES_TOOL_SCENARIOS",
     "Flow",
     "Flows",
     "ManageNotesWorkflow",
-    "NOTES_EVALUATION",
-    "NOTES_TOOL_SCENARIOS",
     "manage_notes_toolset",
 ]

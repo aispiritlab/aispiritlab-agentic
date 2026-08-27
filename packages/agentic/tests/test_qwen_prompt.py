@@ -29,8 +29,7 @@ def test_qwen_prompt_converts_native_gemma_turn_history() -> None:
 
 def test_qwen_prompt_does_not_double_wrap_when_system_prompt_is_already_turn_formatted() -> None:
     raw_system = (
-        "<|im_start|>system\nINSTRUKCJE\n<|im_end|>\n"
-        "<|im_start|>assistant\nWzorzec\n<|im_end|>"
+        "<|im_start|>system\nINSTRUKCJE\n<|im_end|>\n<|im_start|>assistant\nWzorzec\n<|im_end|>"
     )
     prompt = QwenPromptBuilder(system_prompt=raw_system)
     rendered = prompt.build_prompt("hej", toolsets=None)

@@ -1,40 +1,53 @@
 """Generic agent orchestration runtime.
 
 Accepts workflows, a router, and output handlers as constructor parameters.
-No application-specific agents are hardcoded here.
+No application-specific agents are hardcoded here; concrete applications
+subclass :class:`AgenticRuntime` and supply their own pieces (see
+``personal_assistant.runtime.PARuntime``).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 import threading
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 import uuid
 
-from providers.api import OpenAIProvider
-from agentic.workflow import WorkflowRuntime
-from agentic.workflow._workflow import AgenticWorkflow
 from structlog import get_logger
 
+from agentic.observability import LLMTracer
+from agentic.workflow import (
+    DurableMessageBus,
+    SQLiteCheckpointStore,
+    SQLiteEventStore,
+    WorkflowRuntime,
+)
+from agentic.workflow._workflow import AgenticWorkflow
 from agentic_runtime.messaging.message_bus import InMemoryMessageBus
 from agentic_runtime.messaging.messages import (
     AssistantMessage,
     ConversationData,
     Message,
-    RecordedMessageMetadata,
     PromptSnapshot,
+    RecordedMessageMetadata,
     UserCommand,
     UserMessage,
 )
-from agentic_runtime.storage.sqlite_store import SQLiteMessageStore
+from agentic_runtime.storage.sqlite_store import MessageStore, SQLiteMessageStore
+from providers.api import OpenAIProvider
 
 from .execution import WorkflowExecution
 from .output_handler import WorkflowOutputHandler
-from .settings import Settings, settings as default_settings
+from .settings import Settings
+from .settings import settings as default_settings
 from .trace import create_tracer, init_tracing
 from .turn_execution import TurnExecutor, TurnPlan, coerce_reply_text
 from .workflow_descriptors import render_workflow_descriptors
 
 logger = get_logger(__name__)
+
+ShutdownStep = tuple[str, Callable[[], None]]
 
 
 class RouterProtocol(Protocol):
@@ -47,58 +60,111 @@ class RouterProtocol(Protocol):
     def close(self) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class RuntimeServices:
+    """Infrastructure a runtime hands to workflow and handler factories."""
+
+    bus: InMemoryMessageBus
+    tracer: LLMTracer
+    settings: Settings
+
+
+type WorkflowSource = (
+    Sequence[AgenticWorkflow] | Callable[[RuntimeServices], Sequence[AgenticWorkflow]]
+)
+type OutputHandlerSource = (
+    Sequence[WorkflowOutputHandler] | Callable[[RuntimeServices], Sequence[WorkflowOutputHandler]]
+)
+
+
 class AgenticRuntime:
     """Generic agent orchestration runtime.
 
-    Accepts pre-built workflows, a router, and output handlers.
-    Application-specific logic belongs in a subclass or wrapper (e.g. PARuntime).
+    Accepts workflows (or a factory that builds them from :class:`RuntimeServices`),
+    a router, and output handlers. Application-specific logic belongs in a
+    subclass — override :meth:`_run_general_fallback` for a custom no-route
+    answer and :meth:`_extra_shutdown_steps` to release extra resources.
     """
 
     def __init__(
         self,
         *,
-        workflows: list[AgenticWorkflow],
+        workflows: WorkflowSource,
         router: RouterProtocol,
-        output_handlers: list[WorkflowOutputHandler] | None = None,
+        output_handlers: OutputHandlerSource | None = None,
         workflow_filter: Callable[[AgenticWorkflow], bool] | None = None,
         on_stop: Callable[[], None] | None = None,
+        session_id: str = "",
         settings: Settings | None = None,
     ) -> None:
-        _settings = settings or default_settings
+        self._settings = settings or default_settings
         init_tracing()
         self._stop_lock = threading.Lock()
         self._stopped = False
         self._tracer = create_tracer(enabled=True)
         self.runtime_id = self._new_runtime_id()
-        self.store = SQLiteMessageStore(
-            path=_settings.message_store_path,
-            batch_size=_settings.message_store_batch_size,
-            flush_interval_seconds=_settings.message_store_flush_interval_seconds,
-        )
-        self.bus = InMemoryMessageBus(store=self.store)
+        self.session_id = session_id
+        self.event_store = self._create_event_store()
+        self.store = self._create_message_store()
+        self.bus = self._create_bus(self.store)
         self._workflow_runtime = WorkflowRuntime(
             bus=self.bus,
             tracer=self._tracer,
-            max_inline_bytes=_settings.message_stream_inline_bytes,
-            chunk_bytes=_settings.message_stream_chunk_bytes,
+            max_inline_bytes=self._settings.message_stream_inline_bytes,
+            chunk_bytes=self._settings.message_stream_chunk_bytes,
         )
-        self._turn_executor = self._workflow_runtime.turn_executor
+        self._turn_executor: TurnExecutor = self._workflow_runtime.turn_executor
         self.router = router
         self._workflow_filter = workflow_filter
         self._on_stop = on_stop
 
-        self.workflows: dict[str, AgenticWorkflow] = {}
-        for workflow in workflows:
-            self._workflow_runtime.register_workflow(workflow.description.agent_name, workflow)
-        self.workflows = self._workflow_runtime.workflows
+        services = RuntimeServices(bus=self.bus, tracer=self._tracer, settings=self._settings)
 
-        for handler in output_handlers or []:
+        built_workflows = workflows(services) if callable(workflows) else workflows
+        for workflow in built_workflows:
+            self._workflow_runtime.register_workflow(workflow.description.agent_name, workflow)
+        self.workflows: dict[str, AgenticWorkflow] = self._workflow_runtime.workflows
+
+        built_handlers = (
+            output_handlers(services) if callable(output_handlers) else output_handlers
+        )
+        for handler in built_handlers or ():
             self._workflow_runtime.register_output_handler(handler)
 
+        self._configure_providers()
+        replay_pending = getattr(self.bus, "replay_pending", None)
+        if callable(replay_pending):
+            replay_pending()
+
+    # ------------------------------------------------------------------
+    # Infrastructure factories — override to swap the backing services
+    # ------------------------------------------------------------------
+
+    def _create_message_store(self) -> MessageStore:
+        return SQLiteMessageStore(
+            path=self._settings.message_store_path,
+            batch_size=self._settings.message_store_batch_size,
+            flush_interval_seconds=self._settings.message_store_flush_interval_seconds,
+        )
+
+    def _create_event_store(self) -> SQLiteEventStore:
+        return SQLiteEventStore(path=self._settings.event_store_path)
+
+    def _create_bus(self, store: MessageStore) -> InMemoryMessageBus:
+        stream_name = f"runtime-messages:{self.session_id or 'default'}"
+        return DurableMessageBus(
+            event_store=self.event_store,
+            checkpoint_store=SQLiteCheckpointStore(self.event_store.path),
+            store=store,
+            stream_name=stream_name,
+            consumer_id="runtime-dispatch-v1",
+        )
+
+    def _configure_providers(self) -> None:
         OpenAIProvider.configure(
-            base_url=_settings.api_base_url,
-            api_key=_settings.api_key,
-            timeout=_settings.api_timeout,
+            base_url=self._settings.api_base_url,
+            api_key=self._settings.api_key,
+            timeout=self._settings.api_timeout,
         )
 
     @staticmethod
@@ -123,7 +189,7 @@ class AgenticRuntime:
     def _resolve_workflow(self, text: str) -> AgenticWorkflow | None:
         available_summary = self._available_workflows_summary()
         workflow_name = self.router.route(text, available_summary)
-        print(f"Resolved workflow: {workflow_name}")
+        logger.debug("workflow_resolved", workflow=workflow_name)
         return self._routable_workflows().get(workflow_name)
 
     @staticmethod
@@ -135,14 +201,7 @@ class AgenticRuntime:
         )
 
     def _get_turn_executor(self) -> TurnExecutor:
-        runtime = getattr(self, "_workflow_runtime", None)
-        if runtime is not None:
-            return runtime.turn_executor
-        executor = getattr(self, "_turn_executor", None)
-        if executor is None:
-            executor = TurnExecutor(bus=self.bus, tracer=self._tracer)
-            self._turn_executor = executor
-        return executor
+        return self._workflow_runtime.turn_executor
 
     def _publish_workflow_execution(
         self,
@@ -151,14 +210,7 @@ class AgenticRuntime:
         workflow_name: str,
         execution: WorkflowExecution,
     ) -> str | None:
-        runtime = getattr(self, "_workflow_runtime", None)
-        if runtime is not None:
-            return runtime.publish_workflow_execution(
-                incoming=incoming,
-                workflow_name=workflow_name,
-                execution=execution,
-            )
-        return self._get_turn_executor().publish_workflow_execution(
+        return self._workflow_runtime.publish_workflow_execution(
             incoming=incoming,
             workflow_name=workflow_name,
             execution=execution,
@@ -167,48 +219,72 @@ class AgenticRuntime:
     def start(self) -> str:
         return self.router.start()
 
+    def get_initial_greeting(self) -> str:
+        return self.start()
+
     def run(self, text: str) -> str:
         return self.handle(
             UserMessage(
                 data=ConversationData(role="user", text=text),
                 metadata=RecordedMessageMetadata(
                     runtime_id=self.runtime_id,
+                    session_id=self.session_id,
                     domain="general",
                     source="user",
                 ),
             )
         )
 
+    # ------------------------------------------------------------------
+    # Shutdown
+    # ------------------------------------------------------------------
+
+    def _extra_shutdown_steps(self) -> Sequence[ShutdownStep]:
+        """Resources a subclass wants closed after workflows, before the bus."""
+        return ()
+
+    def _shutdown_steps(self) -> list[ShutdownStep]:
+        steps: list[ShutdownStep] = []
+        if self._on_stop is not None:
+            steps.append(("on_stop", self._on_stop))
+        steps.append(("router", self.router.close))
+        for workflow_name, workflow in self.workflows.items():
+            close = getattr(workflow, "close", None)
+            if callable(close):
+                steps.append((f"workflow:{workflow_name}", close))
+        steps.extend(self._extra_shutdown_steps())
+        steps.append(("bus", self.bus.close))
+        steps.append(("tracer", self._tracer.shutdown))
+        return steps
+
     def stop(self) -> None:
+        """Release every runtime resource, best effort.
+
+        Every step runs even if an earlier one failed; the collected failures are
+        raised together so none is silently dropped.
+        """
         with self._stop_lock:
             if self._stopped:
                 return
             self._stopped = True
 
         errors: list[Exception] = []
-
-        def _run_shutdown_step(name: str, action) -> None:  # noqa: ANN001
+        for name, action in self._shutdown_steps():
             try:
                 action()
             except Exception as error:
                 logger.warning("runtime_shutdown_step_failed", step=name, error=str(error))
                 errors.append(error)
 
-        if self._on_stop:
-            _run_shutdown_step("on_stop", self._on_stop)
-
-        _run_shutdown_step("router", self.router.close)
-
-        for workflow_name, workflow in self.workflows.items():
-            close = getattr(workflow, "close", None)
-            if callable(close):
-                _run_shutdown_step(f"workflow:{workflow_name}", close)
-
-        _run_shutdown_step("bus", self.bus.close)
-        _run_shutdown_step("tracer", self._tracer.shutdown)
-
         if errors:
-            raise errors[0]
+            raise ExceptionGroup("runtime shutdown failed", errors)
+
+    def close(self) -> None:
+        self.stop()
+
+    # ------------------------------------------------------------------
+    # Turn planning
+    # ------------------------------------------------------------------
 
     def _build_router_messages(
         self,
@@ -233,6 +309,7 @@ class AgenticRuntime:
                     ),
                     metadata=RecordedMessageMetadata(
                         runtime_id=message.metadata.runtime_id,
+                        session_id=message.metadata.session_id,
                         turn_id=turn_id,
                         domain="routing",
                         source="router",
@@ -248,6 +325,7 @@ class AgenticRuntime:
                 data=ConversationData(role="assistant", text=workflow_name),
                 metadata=RecordedMessageMetadata(
                     runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
                     turn_id=turn_id,
                     domain="routing",
                     source="router",
@@ -259,6 +337,8 @@ class AgenticRuntime:
         return tuple(messages)
 
     def _run_general_fallback(self, message: UserMessage) -> WorkflowExecution:
+        """Answer a message the router could not route. Subclasses may override."""
+        del message
         return WorkflowExecution(
             text=self._unknown_workflow_message(self._available_workflows_summary())
         )
@@ -273,6 +353,7 @@ class AgenticRuntime:
         else:
             workflow_name = self.router.route(message_text, available_summary)
             router_response = None
+        logger.debug("workflow_resolved", workflow=workflow_name)
         workflow = self._routable_workflows().get(workflow_name)
         turn_id = self._new_turn_id()
         pre_messages = self._build_router_messages(
@@ -288,6 +369,7 @@ class AgenticRuntime:
                     data=ConversationData(role="user", text=message_text),
                     metadata=RecordedMessageMetadata(
                         runtime_id=message.metadata.runtime_id,
+                        session_id=message.metadata.session_id,
                         turn_id=turn_id,
                         domain="general",
                         source=message.metadata.source,
@@ -307,6 +389,7 @@ class AgenticRuntime:
                 data=ConversationData(role="user", text=message_text),
                 metadata=RecordedMessageMetadata(
                     runtime_id=message.metadata.runtime_id,
+                    session_id=message.metadata.session_id,
                     turn_id=turn_id,
                     domain=workflow_name,
                     source=message.metadata.source,
@@ -328,7 +411,8 @@ class AgenticRuntime:
 
     def _plan_targeted_turn(self, message: UserMessage) -> TurnPlan:
         target = message.metadata.target
-        assert target is not None
+        if target is None:
+            raise ValueError("Targeted turns require metadata.target.")
         turn_id = message.metadata.turn_id or self._new_turn_id()
         workflow = self.workflows[target]
         return TurnPlan(
@@ -369,6 +453,3 @@ class AgenticRuntime:
 
     def handle_message(self, text: str) -> str:
         return self.run(text)
-
-    def close(self) -> None:
-        self.stop()

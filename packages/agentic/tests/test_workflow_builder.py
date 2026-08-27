@@ -83,7 +83,9 @@ def test_workflow_builder_emits_events_without_custom_decider() -> None:
     workflow = (
         WorkflowBuilder("planner")
         .agent(agent)
-        .emit_events(lambda response: [Event(type="delegated", data={"count": len(response.tool_calls)})])
+        .emit_events(
+            lambda response: [Event(type="delegated", data={"count": len(response.tool_calls)})]
+        )
         .build()
     )
 
@@ -102,9 +104,13 @@ def test_workflow_builder_maps_external_event_inputs() -> None:
         .agent(agent)
         .inputs("Triggered", "UserCommand", "UserMessage")
         .map_input(
-            lambda message: UserMessage(data=ConversationData(role="user", text=message.data.get("text", "")))
-            if isinstance(message, Triggered)
-            else message if isinstance(message, UserMessage) else None
+            lambda message: (
+                UserMessage(data=ConversationData(role="user", text=message.data.get("text", "")))
+                if isinstance(message, Triggered)
+                else message
+                if isinstance(message, UserMessage)
+                else None
+            )
         )
         .build()
     )

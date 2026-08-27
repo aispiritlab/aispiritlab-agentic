@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Sequence
+from enum import StrEnum
+from typing import Any
 
 import structlog
 
 from agentic.capabilities import AbstractCapability, HookContext
-from agentic.exceptions import DEFAULT_RETRY, ModelRetry, RetryPolicy, ToolValidationError
+from agentic.exceptions import ModelRetry, ToolValidationError
 from agentic.observability import LLMTracer, NoopLLMTracer, TraceSnapshot
 
 from ._tools import Command, JsonRepairer, Tool, ToolCall, ToolCallCommand, ToolContext
 
-
 logger = structlog.get_logger(__name__)
 
 TOOL_ERROR_PREFIXES: tuple[str, ...] = ("Błąd:", "Error:")
+
+
+class ToolRunStatus(StrEnum):
+    SUCCESS = "success"
+    ERROR = "error"
+    RETRY = "retry"
 
 
 @dataclass(frozen=True)
@@ -23,6 +30,11 @@ class ToolRunResult:
     output: str
     trace: TraceSnapshot | None = None
     retry: bool = False
+    status: ToolRunStatus = ToolRunStatus.SUCCESS
+
+    @property
+    def success(self) -> bool:
+        return self.status == ToolRunStatus.SUCCESS and not self.retry
 
 
 class Toolset:
@@ -69,9 +81,7 @@ class Toolset:
 
         if errors:
             detail = "; ".join(errors)
-            raise ToolValidationError(
-                f"Tool '{function_name}' validation failed: {detail}"
-            )
+            raise ToolValidationError(f"Tool '{function_name}' validation failed: {detail}")
 
     def has_tool(self, function_name: str) -> bool:
         return any(tool.name == function_name for tool in self._tools)
@@ -91,11 +101,7 @@ class Toolsets(Sequence[Toolset]):
         self._toolsets = list(toolsets or [])
         self._json_repairer = json_repairer
         self._validate_unique_tool_names()
-        self._tool_names = tuple(
-            tool.name
-            for toolset in self._toolsets
-            for tool in toolset.tools
-        )
+        self._tool_names = tuple(tool.name for toolset in self._toolsets for tool in toolset.tools)
         self._command_to_tool: dict[type[Command], str] = {}
         for toolset in self._toolsets:
             for tool_def in toolset.tools:
@@ -233,6 +239,7 @@ class Toolsets(Sequence[Toolset]):
                             output=f"Error: {error_text}",
                             trace=resolved_tracer.current_trace,
                             retry=True,
+                            status=ToolRunStatus.RETRY,
                         )
                     except Exception as error:
                         error_text = str(error)
@@ -245,16 +252,20 @@ class Toolsets(Sequence[Toolset]):
                                 tool_call=tool_call_tuple,
                                 output=error_text,
                                 trace=trace,
+                                status=ToolRunStatus.ERROR,
                             )
                         return ToolRunResult(
                             tool_call=tool_call_tuple,
                             output=f"Error: {error_text}",
                             trace=trace,
+                            status=ToolRunStatus.ERROR,
                         )
                     output = "" if result is None else str(result)
                     if capability is not None and hook_context is not None:
                         try:
-                            output = capability.after_tool_execute(function_name, output, hook_context)
+                            output = capability.after_tool_execute(
+                                function_name, output, hook_context
+                            )
                         except Exception as error:
                             capability.on_error(error, hook_context)
                             raise
@@ -263,12 +274,18 @@ class Toolsets(Sequence[Toolset]):
                         tool_call=tool_call_tuple,
                         output=output,
                         trace=resolved_tracer.current_trace,
+                        status=(
+                            ToolRunStatus.ERROR
+                            if self.is_tool_error(output)
+                            else ToolRunStatus.SUCCESS
+                        ),
                     )
 
         return ToolRunResult(
             tool_call=tool_call_tuple,
             output=f"Error: tool '{function_name}' does not exist.",
             trace=resolved_tracer.current_trace,
+            status=ToolRunStatus.ERROR,
         )
 
     def run_tool(
@@ -290,6 +307,7 @@ class Toolsets(Sequence[Toolset]):
                 return ToolRunResult(
                     tool_call=tool_call,
                     output=f"Error: tool '{function_name}' does not exist.",
+                    status=ToolRunStatus.ERROR,
                 )
             return None
         return self.execute(

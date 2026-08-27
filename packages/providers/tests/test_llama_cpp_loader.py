@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import io
-import tarfile
 from pathlib import Path
+import tarfile
 from unittest.mock import patch
 
 import httpx
@@ -76,9 +76,7 @@ class TestLlamaCppLoader:
         loader = LlamaCppLoader()
 
         with (
-            patch(
-                "providers.loader.llama_cpp.fetch_release", return_value=release
-            ),
+            patch("providers.loader.llama_cpp.fetch_release", return_value=release),
             respx.mock,
         ):
             respx.get("https://example.com/llama-b8628-bin-ubuntu-x64.tar.gz").mock(
@@ -94,9 +92,11 @@ class TestLlamaCppLoader:
         loader = LlamaCppLoader()
 
         release, _ = _make_release()
-        with patch.object(loader, "_resolve_release", return_value=release):
-            with pytest.raises(RuntimeError, match="No llama.cpp binary available"):
-                loader.download(settings, platform_info=platform)
+        with (
+            patch.object(loader, "_resolve_release", return_value=release),
+            pytest.raises(RuntimeError, match="No llama.cpp binary available"),
+        ):
+            loader.download(settings, platform_info=platform)
 
     def test_no_matching_asset_raises(self, tmp_path: Path) -> None:
         release = Release(tag="b8629", assets=())
@@ -104,9 +104,11 @@ class TestLlamaCppLoader:
         platform = PlatformInfo(os="macos", arch="arm64")
         loader = LlamaCppLoader()
 
-        with patch.object(loader, "_resolve_release", return_value=release):
-            with pytest.raises(RuntimeError, match="No matching asset"):
-                loader.download(settings, platform_info=platform)
+        with (
+            patch.object(loader, "_resolve_release", return_value=release),
+            pytest.raises(RuntimeError, match="No matching asset"),
+        ):
+            loader.download(settings, platform_info=platform)
 
     def test_is_downloaded_false_when_empty(self, tmp_path: Path) -> None:
         settings = ProviderSettings(bin_dir=tmp_path)

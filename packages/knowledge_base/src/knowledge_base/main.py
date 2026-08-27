@@ -3,16 +3,13 @@ from pathlib import Path
 
 import orjson
 
-from knowledge_base.loader import load_vault_markdown_dataset
 from .documents import Document
+from .loader import load_vault_markdown_dataset
+from .paths import RAG_PATH
 from .store import rebuild_knowledge_base
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-RAG_PATH = PROJECT_ROOT / "data" / "knowledge_base"
 HOME = Path.home()
-PERSONALIZATION_FILES = (
-    HOME / ".aispiritagent" / "personalization.json",
-)
+PERSONALIZATION_FILES = (HOME / ".aispiritagent" / "personalization.json",)
 DEFAULT_OBSIDIAN_VAULT_DIRS = (
     HOME / "Obsidian",
     HOME / "Documents" / "Obsidian",
@@ -33,9 +30,7 @@ def _resolve_vault_path_from_config(
 def _iter_obsidian_vault_roots() -> tuple[Path, ...]:
     custom_roots_raw = os.getenv("OBSIDIAN_VAULT_DIRS", "")
     custom_roots = tuple(
-        Path(entry).expanduser()
-        for entry in custom_roots_raw.split(os.pathsep)
-        if entry.strip()
+        Path(entry).expanduser() for entry in custom_roots_raw.split(os.pathsep) if entry.strip()
     )
     if custom_roots:
         return custom_roots
@@ -48,7 +43,6 @@ def _resolve_vault_path_from_name(vault_name: str) -> Path | None:
         if candidate.exists() and candidate.is_dir():
             return candidate
     return None
-
 
 
 def _get_vault_path() -> Path:
@@ -90,9 +84,7 @@ def initial_rag(documents: list[Document]):
 
 def main():
     documents = load_vault_markdown_dataset()
-    initial_rag([
-        doc for doc in documents if doc.page_content.strip() != ""
-    ])
+    initial_rag([doc for doc in documents if doc.page_content.strip() != ""])
 
 
 if __name__ == "__main__":

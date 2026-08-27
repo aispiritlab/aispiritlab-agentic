@@ -6,7 +6,6 @@ import contextvars
 import threading
 from typing import TYPE_CHECKING
 
-from providers.orchestrator import ModelProvider
 from agentic.workflow.messages import (
     AssistantMessage,
     Command,
@@ -27,10 +26,10 @@ from agentic.workflow.messages import (
     UserMessage,
 )
 from agentic_runtime.workspaces import build_session_id, get_active_workspace, parse_session_id
-from registry import Prompts, get_prompt
-
 from personal_assistant.agents.personalize.personalize_agent import PersonalizeAgent as Agent
 from personal_assistant.messaging.events import CreatedNote, NoteDeleted, NoteUpdated
+from providers.orchestrator import ModelProvider
+from registry import Prompts, get_prompt
 
 if TYPE_CHECKING:
     from personal_assistant.runtime import PARuntime
@@ -86,9 +85,9 @@ def get_runtime(user: str | None = None, workspace: str | None = None) -> PARunt
                 from agentic_runtime.distributed.runtime import DistributedAgenticRuntime
 
                 runtime = DistributedAgenticRuntime.from_settings()
-                setattr(runtime, "user_slug", resolved_user)
-                setattr(runtime, "workspace_slug", resolved_workspace)
-                setattr(runtime, "session_id", cache_key)
+                runtime.user_slug = resolved_user
+                runtime.workspace_slug = resolved_workspace
+                runtime.session_id = cache_key
                 _runtimes[cache_key] = runtime  # type: ignore[assignment]
             else:
                 from personal_assistant.runtime import PARuntime
@@ -223,7 +222,7 @@ def generate_image_agent(
     images: str | list[str] | None = None,
     user: str | None = None,
     workspace: str | None = None,
-):  # noqa: ANN201
+):
     resolved = _resolve_user(user)
     resolved_workspace = _resolve_workspace(workspace)
     return get_runtime(resolved, workspace=resolved_workspace).run_generate_image(
@@ -273,8 +272,8 @@ __all__ = [
     "MessageStarted",
     "NoteDeleted",
     "NoteUpdated",
-    "Prompts",
     "PromptSnapshot",
+    "Prompts",
     "ToolCallEvent",
     "ToolResultMessage",
     "TurnCompleted",
