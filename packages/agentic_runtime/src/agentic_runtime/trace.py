@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import threading
 from uuid import uuid4
@@ -69,8 +70,28 @@ def init_tracing() -> str:
 
 
 def create_tracer(enabled: bool = True) -> LLMTracer:
+    """The tracer every agent, LLM call and tool call is routed through.
+
+    MLflow as before. When ``AIWATCHER_URL`` is set, aiwatcher is added
+    alongside it rather than replacing it — both see every hook, so existing
+    MLflow traces are unaffected.
+
+    Opt-in and fail-soft on purpose: with the variable unset, or with the SDK
+    not installed, this returns exactly what it always did.
+    """
     tracking_uri = get_tracking_uri()
-    return build_tracer(enabled=enabled, backend="mlflow", tracking_uri=tracking_uri)
+    tracer = build_tracer(enabled=enabled, backend="mlflow", tracking_uri=tracking_uri)
+
+    if not enabled or not os.environ.get("AIWATCHER_URL"):
+        return tracer
+
+    try:
+        from aiwatcher_sdk.integrations.agentic import aiwatcher_tracer, tee
+    except ImportError:
+        # Telemetry must never be the reason the agent will not start.
+        return tracer
+
+    return tee(tracer, aiwatcher_tracer(service="ai-spirit-agent"))
 
 
 def set_mlflow_workspace(workspace_slug: str) -> None:
