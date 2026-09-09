@@ -62,7 +62,7 @@ test-e2e-live: ## Run runtime-first live end-to-end tests
 	RUN_AGENT_E2E_LIVE=1 uv run pytest packages/personal_assistant/tests/e2e_live/ -m agent_e2e_live -v
 
 .PHONY: test-resilience
-test-resilience: ## Run distributed resilience tests (requires LLM server, Redis optional)
+test-resilience: ## Run distributed resilience tests (requires LLM server, Iggy optional)
 	RUN_DISTRIBUTED_RESILIENCE=1 uv run pytest packages/agentic_runtime/tests/e2e_resilience/ -m distributed_resilience -v
 
 #################################################################################
@@ -118,13 +118,24 @@ mlflow-ui: ## Start MLflow UI without Docker
 mlflow-logs: ## Tail MLflow stack logs
 	docker compose --project-directory . -f containers/docker-compose.yml logs -f
 
-.PHONY: redis
-redis: ## Start standalone Redis for local distributed dev
-	docker run --rm --name ai-spirit-redis -p 6379:6379 redis:8.6-alpine
+.PHONY: iggy
+iggy: ## Start standalone Apache Iggy for local distributed dev
+	# Every flag is load-bearing. Iggy's runtime is io_uring and the default
+	# seccomp profile blocks it; "numa:auto" sharding fails inside a container
+	# VM; and without the root credentials the server invents a password, logs
+	# it once, and refuses every login.
+	docker run --rm --name ai-spirit-iggy \
+	  --security-opt seccomp=unconfined \
+	  -e IGGY_TCP_ADDRESS=0.0.0.0:8090 \
+	  -e IGGY_SYSTEM_SHARDING_CPU_ALLOCATION=2 \
+	  -e IGGY_SYSTEM_SHARDING_PIN_CORES=false \
+	  -e IGGY_ROOT_USERNAME=iggy \
+	  -e IGGY_ROOT_PASSWORD=iggy \
+	  -p 8090:8090 apache/iggy:0.9.0-edge.5
 
-.PHONY: redis-stop
-redis-stop: ## Stop standalone Redis container
-	docker stop ai-spirit-redis
+.PHONY: iggy-stop
+iggy-stop: ## Stop standalone Iggy container
+	docker stop ai-spirit-iggy
 
 .PHONY: lab6-up
 lab6-up: ## Start distributed Lab 6 stack

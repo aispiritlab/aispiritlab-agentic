@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Any
 
 from agentic.workflow import register_record_contract
-from agentic.workflow.messages import Event, Message, RecordedMessageMetadata, UserCommand
-
-
-def _metadata_with_updates(
-    metadata: RecordedMessageMetadata, **updates: Any
-) -> RecordedMessageMetadata:
-    values = {
-        field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)
-    }
-    values.update(updates)
-    return RecordedMessageMetadata(**values)
+from agentic.workflow.messages import (
+    Event,
+    Message,
+    RecordedMessageMetadata,
+    UserCommand,
+    metadata_with_updates,
+)
 
 
 def _normalize_results(
@@ -65,7 +61,7 @@ class SearchPlanned(Event):
     def with_metadata(self, **updates: Any) -> Message:
         return SearchPlanned(
             data=dict(self.data),
-            metadata=_metadata_with_updates(self.metadata, **updates),
+            metadata=metadata_with_updates(self.metadata, **updates),
         )
 
     def with_data(self, **updates: Any) -> Message:
@@ -124,7 +120,7 @@ class SearchResultsFetched(Event):
     def with_metadata(self, **updates: Any) -> Message:
         return SearchResultsFetched(
             data=dict(self.data),
-            metadata=_metadata_with_updates(self.metadata, **updates),
+            metadata=metadata_with_updates(self.metadata, **updates),
         )
 
     def with_data(self, **updates: Any) -> Message:
@@ -173,7 +169,7 @@ class SearchRequested(UserCommand):
     def with_metadata(self, **updates: Any) -> Message:
         return SearchRequested(
             data=dict(self.data),
-            metadata=_metadata_with_updates(self.metadata, **updates),
+            metadata=metadata_with_updates(self.metadata, **updates),
         )
 
     def with_data(self, **updates: Any) -> Message:
@@ -232,7 +228,7 @@ class SummaryRequested(UserCommand):
     def with_metadata(self, **updates: Any) -> Message:
         return SummaryRequested(
             data=dict(self.data),
-            metadata=_metadata_with_updates(self.metadata, **updates),
+            metadata=metadata_with_updates(self.metadata, **updates),
         )
 
     def with_data(self, **updates: Any) -> Message:

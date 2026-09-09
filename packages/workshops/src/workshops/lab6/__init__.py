@@ -11,12 +11,12 @@ from . import messages as _messages  # noqa: F401
 
 class Lab6App(LabApp):
     lab_title = "Lab 6 — Distributed Planner/Search/Summary"
-    lab_subtitle = "Redis Streams showcase"
+    lab_subtitle = "Apache Iggy showcase"
     lab_info: ClassVar[list[str]] = [
         "Topology:",
         "  chat -> planner -> search -> summary",
         "",
-        f"Redis: {settings.redis_url}",
+        f"Iggy: {settings.laser_connection_string}",
         f"Entry agent: {settings.chat_entry_agent}",
         "",
         "Commands:",

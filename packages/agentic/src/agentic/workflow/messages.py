@@ -91,6 +91,46 @@ class RecordedMessageMetadata(MessageMetadata):
     content_sha256: str | None = None
 
 
+#: Metadata keys a tracer sets that are not fields of the metadata.
+#:
+#: `trace_id`, `span_id` and the rest are *properties* over `trace`, so a
+#: tracer's `span_id=…` reaches the dataclass as an unknown keyword rather than
+#: as a value it can store.
+_TRACE_UPDATE_KEYS = (
+    "session_id",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "span_name",
+    "span_type",
+)
+
+
+def metadata_with_updates[MetadataT: MessageMetadata](
+    metadata: MetadataT, **updates: Any
+) -> MetadataT:
+    """Apply `updates` to `metadata`, folding the trace keys into the snapshot.
+
+    Every `with_metadata` reaches this, including the ones an event with a
+    custom `__init__` has to override — those cannot `replace` themselves, and
+    each was carrying its own copy of the fold. A copy that omits it raises
+    `TypeError` the first time a tracer sets a span on that event and never
+    before, which is how four of them stayed wrong while the graph ran untraced.
+    """
+    trace = updates.pop("trace", metadata.trace)
+    if any(key in updates for key in _TRACE_UPDATE_KEYS):
+        trace = build_trace_snapshot(
+            trace,
+            session_id=str(updates.pop("session_id", metadata.session_id) or ""),
+            trace_id=updates.pop("trace_id", metadata.trace_id),
+            span_id=updates.pop("span_id", metadata.span_id),
+            parent_span_id=updates.pop("parent_span_id", metadata.parent_span_id),
+            span_name=updates.pop("span_name", metadata.span_name),
+            span_type=updates.pop("span_type", metadata.span_type),
+        )
+    return replace(metadata, trace=trace, **updates)
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ConversationData:
     role: str = ""
@@ -107,28 +147,7 @@ class Message:
     metadata: MessageMetadata = field(default_factory=RecordedMessageMetadata)
 
     def with_metadata(self, **updates: Any) -> Message:
-        trace = updates.pop("trace", self.metadata.trace)
-        if any(
-            key in updates
-            for key in (
-                "session_id",
-                "trace_id",
-                "span_id",
-                "parent_span_id",
-                "span_name",
-                "span_type",
-            )
-        ):
-            trace = build_trace_snapshot(
-                trace,
-                session_id=str(updates.pop("session_id", self.metadata.session_id) or ""),
-                trace_id=updates.pop("trace_id", self.metadata.trace_id),
-                span_id=updates.pop("span_id", self.metadata.span_id),
-                parent_span_id=updates.pop("parent_span_id", self.metadata.parent_span_id),
-                span_name=updates.pop("span_name", self.metadata.span_name),
-                span_type=updates.pop("span_type", self.metadata.span_type),
-            )
-        return replace(self, metadata=replace(self.metadata, trace=trace, **updates))
+        return replace(self, metadata=metadata_with_updates(self.metadata, **updates))
 
     def with_data(self, **updates: Any) -> Message:
         if isinstance(self.data, dict):
@@ -170,9 +189,7 @@ def normalize_recorded_message(
     if not metadata.idempotency_key and message_id:
         updates["idempotency_key"] = message_id
     if not metadata.contract_name:
-        updates["contract_name"] = (
-            _RECORD_CONTRACT_NAMES.get(type(message), "") or message.type
-        )
+        updates["contract_name"] = _RECORD_CONTRACT_NAMES.get(type(message), "") or message.type
     if metadata.occurred_at_ns <= 0:
         updates["occurred_at_ns"] = now_ns
     if stream_name is not None:

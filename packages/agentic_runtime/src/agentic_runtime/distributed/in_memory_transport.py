@@ -1,4 +1,4 @@
-"""In-memory transport with consumer-group semantics for testing without Redis."""
+"""In-memory transport with consumer-group semantics, for testing without a broker."""
 
 from __future__ import annotations
 
@@ -17,10 +17,12 @@ from agentic_runtime.messaging.messages import Message
 
 
 class InMemoryTransport:
-    """Thread-safe in-memory transport that mimics Redis Streams semantics.
+    """Thread-safe in-memory transport that mimics the durable one.
 
-    Supports consumer groups, pending entries, and autoclaim — enough to run
-    ``DistributedService`` without a real Redis instance.
+    Supports consumer groups, pending entries, and reclaiming what an idle
+    consumer never acked — enough to run ``DistributedService`` with no broker.
+    Entry ids keep the two-part shape ``LaserTransport`` gives them, so nothing
+    above this module can tell which transport it is holding.
     """
 
     def __init__(self, *, prefix: str = "test") -> None:
@@ -288,7 +290,7 @@ class InMemoryTransport:
 
 
 class InMemoryServiceRegistry:
-    """In-memory agent registry for testing without Redis."""
+    """In-memory agent registry for testing without a broker."""
 
     def __init__(self) -> None:
         self._registrations: dict[str, AgentRegistration] = {}

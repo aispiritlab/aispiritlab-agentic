@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
+import threading
+import time
 from typing import Any
 
 from agentic.integrations import TavilySearchProvider, ValyuSearchProvider
@@ -25,8 +28,17 @@ from agentic.workflow import (
 )
 from agentic.workflow.messages import ConversationData, RecordedMessageMetadata
 from agentic_graph.events import GraphCompletionEvent, GraphDispatchEvent, GraphOutputReadyEvent
+from agentic_graph.join import (
+    AnswerDiscarded,
+    Completion,
+    JoinLedger,
+    JoinTimedOut,
+    MemoryJoinLedger,
+    OnDeadline,
+)
 from agentic_graph.models import AgentGraph, AgentNode, Connection
 from agentic_runtime.settings import Settings
+from agentic_runtime.trace import create_tracer
 from knowledge_base.store import open_knowledge_base
 from providers.api import OpenAIProvider
 
@@ -173,6 +185,11 @@ class CompiledGraphSystem:
         runtime: WorkflowRuntime,
         settings: Settings,
         runtime_secrets: dict[str, str] | None = None,
+        join: JoinLedger | None = None,
+        on_deadline: OnDeadline = OnDeadline.SUMMARIZE,
+        deadline_seconds: float | None = None,
+        renew_claim_every: float | None = None,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self.compiled = compiled
         self.runtime = runtime
@@ -185,14 +202,39 @@ class CompiledGraphSystem:
         self._node_map = {node.node_id: node for node in compiled.graph.nodes}
         self._agents: dict[str, object] = {}
         self._integrations: dict[str, object] = {}
-        self._expected_completion_counts: dict[tuple[str, str], int] = defaultdict(int)
-        self._completion_buckets: dict[tuple[str, str], list[GraphCompletionEvent]] = defaultdict(
-            list
-        )
-        self._completed_summaries: set[tuple[str, str]] = set()
-        self._reserved_completion_sources: set[tuple[str, str]] = set()
+        # How many arrivals each join waits for, which have arrived, and
+        # whether the summarizer has been fired — three questions that used to
+        # be three dictionaries on this object, and therefore died with the
+        # process. In memory by default, because a preview that runs once needs
+        # nothing else; over an event stream when a worker's join has to
+        # outlive it.
+        self.join: JoinLedger = join or MemoryJoinLedger()
+        # What a join does when it has waited long enough, and how long that is.
+        # `None` schedules nothing, which is the honest default: a deadline
+        # needs something that wakes up and looks, and a preview running in one
+        # process has nothing that does — writing one down there would be a
+        # fact with no reader.
+        self._on_deadline = on_deadline
+        self._deadline_seconds = deadline_seconds
+        # Whether a running summarizer keeps its claim alive, and how often.
+        # `None` does not, which is today's behaviour and sometimes the right
+        # one: a fan-out re-run beside itself is a wasted call rather than a
+        # wrong answer, and a heartbeat costs a thread and an append per beat.
+        # Set it well under the ledger's lease — a third of it is the usual
+        # shape — or it renews after the window it was meant to hold open.
+        self._renew_claim_every = renew_claim_every
+        self._clock = clock
         self._last_inputs: dict[tuple[str, str], str] = {}
         self.steps: list[str] = []
+        #: Every join whose deadline arrived before every source did, and what
+        #: was done about it. A partial answer that says nothing about being
+        #: partial is the failure this list exists to prevent.
+        self.timed_out_joins: list[JoinTimedOut] = []
+        #: Summaries that ran and whose answers were thrown away, because the
+        #: claim stopped being this system's while they were running. Empty is
+        #: the ordinary state; a row here is work that was done twice, which is
+        #: worth seeing even though the answer was not written.
+        self.discarded_answers: list[AnswerDiscarded] = []
         self.outputs: list[GraphOutputRecord] = []
         self.final_responses: dict[str, str] = {}
 
@@ -577,33 +619,217 @@ class CompiledGraphSystem:
         if not isinstance(message, GraphCompletionEvent):
             return None
         latest_result: str | None = None
+        turn_id = message.metadata.turn_id
         for summarizer_node_id in message.summarizer_node_ids:
-            key = (message.metadata.turn_id, summarizer_node_id)
-            bucket = self._completion_buckets[key]
-            if not any(
-                existing.source_node_id == message.source_node_id and existing.text == message.text
-                for existing in bucket
-            ):
-                bucket.append(message)
-            expected = self._expected_completion_counts.get(key, 0)
-            if expected == 0 or len(bucket) < expected or key in self._completed_summaries:
-                continue
-            summarizer_alias = self.compiled.aliases[summarizer_node_id]
-            self._completed_summaries.add(key)
-            self.steps.append(f"{summarizer_alias}: summarizing {len(bucket)} event(s)")
-            incoming = UserMessage(
-                data=ConversationData(role="user", text=self._build_summarizer_input(bucket)),
-                metadata=RecordedMessageMetadata(
-                    runtime_id=message.metadata.runtime_id,
-                    turn_id=message.metadata.turn_id,
-                    domain=summarizer_alias,
-                    source="graph",
-                    target=summarizer_alias,
+            self.join.record_completion(
+                turn_id,
+                summarizer_node_id,
+                Completion(
+                    source_node_id=message.source_node_id,
+                    source_alias=message.source_alias,
+                    text=message.text,
                 ),
             )
-            latest_result = self.runtime.execute_workflow(summarizer_alias, incoming)
-            self.final_responses[message.metadata.turn_id] = latest_result
+            expected = self.join.get_expected(turn_id, summarizer_node_id)
+            bucket = self.join.get_completions(turn_id, summarizer_node_id)
+            if expected == 0 or len(bucket) < expected:
+                continue
+            # Claimed rather than checked-then-set. Two workers that both saw
+            # the last arrival would both find no claim and both fire, and a
+            # graph that answers twice is worse than one that answers late.
+            if not self.join.claim_summary(turn_id, summarizer_node_id):
+                continue
+            latest_result = self._fire_summary(
+                turn_id,
+                summarizer_node_id,
+                bucket,
+                runtime_id=message.metadata.runtime_id,
+            )
         return latest_result
+
+    def sweep_due_joins(self, turn_id: str, now: float | None = None) -> tuple[str, ...]:
+        """Fire every join in this turn whose deadline has passed.
+
+        The last inch of a deadline. `schedule_deadline` writes one down and
+        :meth:`handle_join_deadline` knows what to do when it arrives; between
+        the two, something has to wake up and look. This is what a wake-up
+        calls, and it asks the *ledger* what is due rather than the wake-up —
+        so a timer that fires early, fires twice, or fires for a join that was
+        answered in the meantime costs a fold and changes nothing.
+
+        With `AiwatcherEventStore` and `JoinTimers` the wake-up is the engine
+        handing the scheduling message back at the time it was asked to. That
+        is the whole of what `agentic_graph` has nothing of its own to do: a
+        process holds no clock that survives it, and a deadline nobody wakes for
+        is a fact with no reader.
+
+        Answers which summarizers this call actually fired — not which were due,
+        because a claim somebody else holds is a join this call left alone.
+        """
+        moment = self._clock() if now is None else now
+        fired: list[str] = []
+        for summarizer_node_id in self.join.due_joins(turn_id, moment):
+            # `timed_out_joins` grows exactly when the claim was taken, which is
+            # the one thing `handle_join_deadline`'s `None` cannot distinguish:
+            # it answers `None` both for a claim it was refused and for a join
+            # it decided not to answer.
+            decided = len(self.timed_out_joins)
+            self.handle_join_deadline(turn_id, summarizer_node_id)
+            if len(self.timed_out_joins) > decided:
+                fired.append(summarizer_node_id)
+        return tuple(fired)
+
+    def handle_join_deadline(self, turn_id: str, summarizer_node_id: str) -> str | None:
+        """What a join does when it has waited long enough.
+
+        The remaining silence, turned into a decision: a node that never
+        completes used to leave the fan-in waiting for ever, with nothing in the
+        stream to distinguish it from one still thinking.
+
+        It claims first, and everything else follows from that. A completion
+        that landed while this was on its way finds the claim taken and does not
+        fire beside it; a summary that already finished refuses the claim
+        outright. Which is why this may run late, twice, or against a join that
+        turned out to be complete — the last of those summarizes normally,
+        because a deadline that arrives after every source did has nothing to be
+        partial about, and firing it is the recovery for a completion that was
+        lost on the way.
+        """
+        if not self.join.claim_summary(turn_id, summarizer_node_id):
+            return None
+        arrived = self.join.get_completions(turn_id, summarizer_node_id)
+        answered = {one.source_node_id for one in arrived}
+        missing = tuple(
+            source_node_id
+            for source_node_id in self.join.get_reserved_sources(turn_id, summarizer_node_id)
+            if source_node_id not in answered
+        )
+        summarizer_alias = self.compiled.aliases[summarizer_node_id]
+        # Nothing arrived, so there is nothing to be partial about. Recorded as
+        # missed whatever the graph asked for: an answer composed out of no
+        # results is worse than a turn that says it never got any.
+        gave_up = bool(missing) and (self._on_deadline is OnDeadline.FAIL or not arrived)
+        self.timed_out_joins.append(
+            JoinTimedOut(
+                turn_id=turn_id,
+                summarizer_node_id=summarizer_node_id,
+                arrived=tuple(one.source_node_id for one in arrived),
+                missing=missing,
+                outcome=OnDeadline.FAIL if gave_up else OnDeadline.SUMMARIZE,
+            )
+        )
+        if gave_up:
+            self.steps.append(f"{summarizer_alias}: gave up waiting for {', '.join(missing)}")
+            # Final, so that nothing takes the claim over and asks again: this
+            # join has been decided, and the decision was not to answer.
+            self.join.complete_summary(turn_id, summarizer_node_id)
+            return None
+        if missing:
+            self.steps.append(f"{summarizer_alias}: answering without {', '.join(missing)}")
+        return self._fire_summary(turn_id, summarizer_node_id, arrived)
+
+    def _fire_summary(
+        self,
+        turn_id: str,
+        summarizer_node_id: str,
+        bucket: Sequence[Completion],
+        *,
+        runtime_id: str = "",
+    ) -> str | None:
+        """Run the summarizer on what the join holds. The caller owns the claim.
+
+        `None` when the claim stopped being this system's while it ran, which is
+        an answer that is thrown away rather than written beside the one that
+        replaced it. The work is spent either way; what is dropped is the
+        writing down.
+        """
+        summarizer_alias = self.compiled.aliases[summarizer_node_id]
+        self.steps.append(f"{summarizer_alias}: summarizing {len(bucket)} event(s)")
+        incoming = UserMessage(
+            data=ConversationData(role="user", text=self._build_summarizer_input(bucket)),
+            metadata=RecordedMessageMetadata(
+                runtime_id=runtime_id,
+                turn_id=turn_id,
+                domain=summarizer_alias,
+                source="graph",
+                target=summarizer_alias,
+            ),
+        )
+        # `_make_summarizer_workflow` writes `final_responses` on its own way
+        # out — it is reachable without a join at all — so discarding is putting
+        # back what was there rather than declining to write. This dict is this
+        # system's own, so what is restored is this system's previous answer and
+        # never the replacement's, which lives in the process that took over.
+        previous_answer = self.final_responses.get(turn_id)
+        with self._renewing(turn_id, summarizer_node_id):
+            result = self.runtime.execute_workflow(summarizer_alias, incoming)
+        lost_to = self._lost_the_claim(turn_id, summarizer_node_id)
+        if lost_to is not None:
+            if previous_answer is None:
+                self.final_responses.pop(turn_id, None)
+            else:
+                self.final_responses[turn_id] = previous_answer
+            self.discarded_answers.append(
+                AnswerDiscarded(
+                    turn_id=turn_id,
+                    summarizer_node_id=summarizer_node_id,
+                    taken_over_by=lost_to,
+                )
+            )
+            self.steps.append(
+                f"{summarizer_alias}: discarded its answer, {lost_to} owns this join"
+            )
+            return None
+        # After it returned, never before: a claim is released by finishing, and
+        # one whose summarizer raised is left to expire so that whatever comes
+        # next takes it over rather than finding a join that is permanently
+        # somebody else's.
+        self.join.complete_summary(turn_id, summarizer_node_id)
+        self.final_responses[turn_id] = result
+        return result
+
+    def _lost_the_claim(self, turn_id: str, summarizer_node_id: str) -> str | None:
+        """Who owns this join now, when it is no longer this system.
+
+        Read once, after the summarizer returned, and it holds whether or not
+        anything was renewing: a heartbeat stops a takeover from happening and
+        this stops one that happened from being written down twice.
+        """
+        state = self.join.get_claim(turn_id, summarizer_node_id)
+        if state.completed:
+            return "a summary that already completed"
+        if state.held is None:
+            return "nobody, the claim is gone"
+        if state.held.holder != self.join.holder:
+            return state.held.holder
+        return None
+
+    @contextmanager
+    def _renewing(self, turn_id: str, summarizer_node_id: str) -> Generator[None]:
+        """Keep the claim alive while the summarizer runs, when asked to.
+
+        A daemon thread, which is the shape the distributed runtime already uses
+        for its own heartbeat. It stops on its own the moment a renewal is
+        refused: past that point the claim is somebody else's and pushing at it
+        would be taking it back from whoever is now running the summary.
+        """
+        if self._renew_claim_every is None:
+            yield
+            return
+        done = threading.Event()
+
+        def beat() -> None:
+            while not done.wait(self._renew_claim_every):
+                if not self.join.renew_claim(turn_id, summarizer_node_id):
+                    return
+
+        heart = threading.Thread(target=beat, name="join-claim-renewal", daemon=True)
+        heart.start()
+        try:
+            yield
+        finally:
+            done.set()
+            heart.join(timeout=self._renew_claim_every)
 
     def _handle_output_ready_event(self, message: Any) -> str | None:
         if not isinstance(message, GraphOutputReadyEvent):
@@ -627,13 +853,19 @@ class CompiledGraphSystem:
         return str(target)
 
     def _record_expected_completions(self, plan: CompiledAgentNode, turn_id: str) -> None:
-        source_key = (turn_id, plan.node_id)
-        if source_key in self._reserved_completion_sources:
+        summarizer_node_ids = tuple(
+            self._alias_to_node_id(summarizer_alias)
+            for summarizer_alias in plan.summarizer_targets
+        )
+        self.join.reserve_fan_in(turn_id, plan.node_id, summarizer_node_ids)
+        if self._deadline_seconds is None:
             return
-        self._reserved_completion_sources.add(source_key)
-        for summarizer_alias in plan.summarizer_targets:
-            key = (turn_id, self._alias_to_node_id(summarizer_alias))
-            self._expected_completion_counts[key] += 1
+        due_at = self._clock() + self._deadline_seconds
+        for summarizer_node_id in summarizer_node_ids:
+            # The ledger keeps the first: a fan-in of three reserves three
+            # times, and a deadline that moved with each reservation would be
+            # pushed out by the dispatcher slowness it is there to bound.
+            self.join.schedule_deadline(turn_id, summarizer_node_id, due_at)
 
     def _reserve_expected_completions_for_target(self, target_alias: str, turn_id: str) -> None:
         target_plan = self.compiled.agents[self._alias_to_node_id(target_alias)]
@@ -669,7 +901,7 @@ class CompiledGraphSystem:
         raise KeyError(alias)
 
     @staticmethod
-    def _build_summarizer_input(events: list[GraphCompletionEvent]) -> str:
+    def _build_summarizer_input(events: Sequence[Completion]) -> str:
         parts: list[str] = []
         for event in events:
             parts.append(
@@ -708,12 +940,20 @@ def register_compiled_graph(
     compiled: CompiledGraph,
     settings: Settings,
     runtime_secrets: dict[str, str] | None = None,
+    join: JoinLedger | None = None,
+    on_deadline: OnDeadline = OnDeadline.SUMMARIZE,
+    deadline_seconds: float | None = None,
+    renew_claim_every: float | None = None,
 ) -> CompiledGraphSystem:
     return CompiledGraphSystem(
         compiled=compiled,
         runtime=runtime,
         settings=settings,
         runtime_secrets=runtime_secrets,
+        join=join,
+        on_deadline=on_deadline,
+        deadline_seconds=deadline_seconds,
+        renew_claim_every=renew_claim_every,
     ).register()
 
 
@@ -723,15 +963,32 @@ def build_compiled_graph_system(
     settings: Settings | None = None,
     runtime_secrets: dict[str, str] | None = None,
     runtime: WorkflowRuntime | None = None,
+    join: JoinLedger | None = None,
+    on_deadline: OnDeadline = OnDeadline.SUMMARIZE,
+    deadline_seconds: float | None = None,
+    renew_claim_every: float | None = None,
 ) -> CompiledGraphSystem:
     resolved_settings = settings or Settings()
-    resolved_runtime = runtime or WorkflowRuntime(bus=InMemoryMessageBus())
+    # A tracer, because the alternative is a graph that emits nothing while the
+    # personal assistant emits everything — `BaseRuntime` has called
+    # `create_tracer` all along, and this is the one path that never did. The
+    # runtime already took the argument and defaulted it to a no-op, so the
+    # preview was silent by omission rather than by decision.
+    #
+    # `create_tracer` is itself opt-in and fail-soft: without `AIWATCHER_URL`,
+    # or without the SDK installed, it returns exactly the MLflow tracer it
+    # always did.
+    resolved_runtime = runtime or WorkflowRuntime(bus=InMemoryMessageBus(), tracer=create_tracer())
     compiled = compile_graph(graph)
     return register_compiled_graph(
         runtime=resolved_runtime,
         compiled=compiled,
         settings=resolved_settings,
         runtime_secrets=runtime_secrets,
+        join=join,
+        on_deadline=on_deadline,
+        deadline_seconds=deadline_seconds,
+        renew_claim_every=renew_claim_every,
     )
 
 

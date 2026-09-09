@@ -12,7 +12,7 @@ Educational labs progressing from simple agents to distributed multi-agent syste
 | **Lab 3** | Event-driven agents | Output handlers, event routing (no loops) |
 | **Lab 4** | Full runtime | WorkshopRuntime, message bus, lifecycle events |
 | **Lab 5** | Multi-provider | ChatPrompt vs QwenPrompt, dual-model support |
-| **Lab 6** | Distributed agents | DistributedAgenticRuntime, Redis Streams |
+| **Lab 6** | Distributed agents | DistributedAgenticRuntime, Apache Iggy |
 
 ## Usage
 
@@ -31,6 +31,6 @@ uv run workshops lab6
 ### Distributed lab (Lab 6)
 
 ```bash
-make lab6-up               # start Redis + distributed agents
+make lab6-up               # start Iggy + distributed agents
 make lab6-down             # stop the stack
 ```

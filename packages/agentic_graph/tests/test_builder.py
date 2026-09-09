@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 import tomllib
 
 import orjson
 import pytest
 
+from agentic.workflow import InMemoryEventStore
 from agentic.workflow.messages import RecordedMessageMetadata
 from agentic_graph import AgenticGraphBuilder
-from agentic_graph.compiler import compile_graph
+from agentic_graph.compiler import build_compiled_graph_system, compile_graph
 from agentic_graph.events import GraphCompletionEvent
+from agentic_graph.join import Completion, OnDeadline, StreamJoinLedger
 from agentic_graph.models import AgentGraph, AgentNode, Connection, NodePosition
 from agentic_graph.registry import get_block_by_name
 from agentic_graph.runtime import run_graph_runtime
@@ -425,6 +428,67 @@ def test_run_graph_runtime_broadcasts_to_three_searchers_and_summarizes(
     assert any(event.source == "user" for event in result.events)
 
 
+def test_a_fan_in_of_three_survives_a_worker_restart_and_summarizes_once(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Phase 13's own exit, on a real compiled graph.
+
+    The join used to be dictionaries on the system object, so a worker that went
+    away between the second and third completion took the fan-in with it. It is
+    a stream now: what restarts here is the *system* — one takes two arrivals
+    and is thrown away, and a second one, holding nothing it learnt, takes the
+    third and fires the summarizer. Once.
+    """
+    monkeypatch.chdir(tmp_path)
+    graph = _three_search_graph(str(tmp_path / "restart.md"))
+
+    monkeypatch.setattr("agentic_graph.compiler.TavilySearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.ValyuSearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.LLMCall", _StubLLMCall)
+    monkeypatch.setattr("agentic_graph.compiler.SearchAgent", _StubSearchAgent)
+    monkeypatch.setattr("agentic_graph.compiler.SummarizationAgent", _StubSummarizer)
+    monkeypatch.setenv("TAVILY_API_KEY", "env-tavily")
+    monkeypatch.setenv("VALYU_API_KEY", "env-valyu")
+    monkeypatch.setenv("NOTES_TAVILY_API_KEY", "env-notes")
+
+    store = InMemoryEventStore()
+    stream = "graph:search-workflow-v2"
+    searchers = ("search-tavily-1", "search-valyu-1", "search-notes-1")
+
+    def system() -> object:
+        return build_compiled_graph_system(graph, join=StreamJoinLedger(store, stream))
+
+    def completion(source_node_id: str, text: str) -> GraphCompletionEvent:
+        return GraphCompletionEvent(
+            source_node_id=source_node_id,
+            source_alias=source_node_id,
+            text=text,
+            summarizer_node_ids=("summarizer-1",),
+            metadata=RecordedMessageMetadata(turn_id="turn-restart"),
+        )
+
+    before = system()
+    for node_id in searchers:
+        before.join.reserve_fan_in("turn-restart", node_id, ("summarizer-1",))
+    assert before._handle_completion_event(completion(searchers[0], "a")) is None
+    assert before._handle_completion_event(completion(searchers[1], "b")) is None
+    assert not any("summarizing" in step for step in before.steps)
+
+    # The worker is gone. Everything it knew is in the stream.
+    del before
+    after = system()
+    summary = after._handle_completion_event(completion(searchers[2], "c"))
+
+    assert summary is not None, "the join completed after the restart"
+    assert any("summarizer: summarizing 3 event(s)" in step for step in after.steps)
+    # Once: a redelivery of the last arrival, and a third system entirely, both
+    # find the summary already claimed.
+    assert after._handle_completion_event(completion(searchers[2], "c")) is None
+    third = system()
+    assert third._handle_completion_event(completion(searchers[2], "c")) is None
+
+
 def test_run_graph_runtime_route_one_dispatches_single_target(
     monkeypatch,
     tmp_path: Path,
@@ -520,3 +584,324 @@ def test_public_imports_still_work() -> None:
 def test_run_graph_runtime_rejects_none_message_with_clear_error(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="non-empty input message"):
         run_graph_runtime(_three_search_graph(str(tmp_path / "noop.md")), None)
+
+
+class _MovableClock:
+    """A clock a test moves, so a lease is crossed without sleeping through it."""
+
+    def __init__(self, now: float = 1_700_000_000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def after(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _deadline_system(
+    monkeypatch,
+    tmp_path: Path,
+    store: InMemoryEventStore,
+    *,
+    on_deadline: OnDeadline,
+):
+    """A three-searcher graph whose join has already waited long enough."""
+    graph = _three_search_graph(str(tmp_path / "deadline.md"))
+    monkeypatch.setattr("agentic_graph.compiler.TavilySearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.ValyuSearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.LLMCall", _StubLLMCall)
+    monkeypatch.setattr("agentic_graph.compiler.SearchAgent", _StubSearchAgent)
+    monkeypatch.setattr("agentic_graph.compiler.SummarizationAgent", _StubSummarizer)
+    monkeypatch.setenv("TAVILY_API_KEY", "env-tavily")
+    monkeypatch.setenv("VALYU_API_KEY", "env-valyu")
+    monkeypatch.setenv("NOTES_TAVILY_API_KEY", "env-notes")
+    return build_compiled_graph_system(
+        graph,
+        join=StreamJoinLedger(store, "graph:deadline"),
+        on_deadline=on_deadline,
+        # Already due, so a tick a second later finds it. The clock is the
+        # scheduler's; what a deadline *does* reads no clock at all.
+        deadline_seconds=0.0,
+    )
+
+
+def _reserve_three(system: object, turn_id: str) -> None:
+    for node_id in ("searcher-1", "searcher-2", "searcher-3"):
+        system._record_expected_completions(system.compiled.agents[node_id], turn_id)
+
+
+def _arrival(source_node_id: str, text: str, turn_id: str) -> GraphCompletionEvent:
+    return GraphCompletionEvent(
+        source_node_id=source_node_id,
+        source_alias=source_node_id,
+        text=text,
+        summarizer_node_ids=("summarizer-1",),
+        metadata=RecordedMessageMetadata(turn_id=turn_id),
+    )
+
+
+def _tick(system: object, turn_id: str) -> tuple[str, ...]:
+    """What a worker does when it wakes up, and the whole of what it does.
+
+    One public call, and it asks the *ledger* what is due rather than being told
+    — the stall this closes is one nobody is watching, so the test must not be
+    the thing watching either. A worker over `AiwatcherEventStore` makes exactly
+    this call when the engine hands its scheduling message back.
+    """
+    return system.sweep_due_joins(turn_id, time.time() + 1)
+
+
+def test_a_fan_in_whose_third_node_never_answers_summarizes_what_arrived(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Phase 14's exit, on the permissive setting.
+
+    Two searchers came back and the third never did. Left alone the join waits
+    for ever and says nothing; the deadline turns that silence into an answer
+    that records what it did not have.
+    """
+    monkeypatch.chdir(tmp_path)
+    store = InMemoryEventStore()
+    system = _deadline_system(monkeypatch, tmp_path, store, on_deadline=OnDeadline.SUMMARIZE)
+    turn = "turn-partial"
+
+    _reserve_three(system, turn)
+    assert system._handle_completion_event(_arrival("searcher-1", "a", turn)) is None
+    assert system._handle_completion_event(_arrival("searcher-2", "b", turn)) is None
+    assert not any("summarizing" in step for step in system.steps), "still waiting"
+
+    _tick(system, turn)
+
+    assert any("summarizer: summarizing 2 event(s)" in step for step in system.steps)
+    assert system.final_responses[turn]
+    (recorded,) = system.timed_out_joins
+    assert recorded.outcome is OnDeadline.SUMMARIZE
+    assert recorded.missing == ("searcher-3",), "the answer says which node it did not have"
+    assert recorded.arrived == ("searcher-1", "searcher-2")
+
+    # And once. The node that was late comes back, a second tick runs, and
+    # neither answers beside the first: a late answer is visible and a double
+    # answer is two results nobody can tell apart afterwards.
+    assert system._handle_completion_event(_arrival("searcher-3", "c", turn)) is None
+    _tick(system, turn)
+    assert len([step for step in system.steps if "summarizing" in step]) == 1
+    assert len(system.timed_out_joins) == 1
+
+
+def test_a_fan_in_whose_third_node_never_answers_can_fail_the_turn_instead(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """The same silence, on a graph that said a partial set is not an answer.
+
+    Both are reachable per graph, because one instance runs both kinds.
+    """
+    monkeypatch.chdir(tmp_path)
+    store = InMemoryEventStore()
+    system = _deadline_system(monkeypatch, tmp_path, store, on_deadline=OnDeadline.FAIL)
+    turn = "turn-failed"
+
+    _reserve_three(system, turn)
+    system._handle_completion_event(_arrival("searcher-1", "a", turn))
+    system._handle_completion_event(_arrival("searcher-2", "b", turn))
+
+    _tick(system, turn)
+
+    assert not any("summarizing" in step for step in system.steps), "it did not answer"
+    assert turn not in system.final_responses, "a turn that failed has no answer"
+    (recorded,) = system.timed_out_joins
+    assert recorded.outcome is OnDeadline.FAIL
+    assert recorded.missing == ("searcher-3",), "and it says which node never came back"
+    assert any("gave up waiting for searcher-3" in step for step in system.steps)
+
+    # Decided, so nothing takes the claim over and asks again.
+    assert system._handle_completion_event(_arrival("searcher-3", "c", turn)) is None
+    _tick(system, turn)
+    assert len(system.timed_out_joins) == 1
+
+
+def test_a_fan_in_where_nothing_arrived_is_never_summarized_out_of_nothing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    # Not a second policy: a fan-in where no node came back has nothing to be
+    # partial about, and an answer composed out of no results is worse than a
+    # turn that says it never got any.
+    monkeypatch.chdir(tmp_path)
+    store = InMemoryEventStore()
+    system = _deadline_system(monkeypatch, tmp_path, store, on_deadline=OnDeadline.SUMMARIZE)
+    turn = "turn-silent"
+
+    _reserve_three(system, turn)
+    _tick(system, turn)
+
+    (recorded,) = system.timed_out_joins
+    assert recorded.outcome is OnDeadline.FAIL
+    assert recorded.arrived == ()
+    assert not any("summarizing" in step for step in system.steps)
+
+
+def test_a_deadline_that_arrives_after_every_source_did_answers_normally(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    # The recovery for a completion that was lost on the way: the ledger holds
+    # three arrivals and nobody fired, so the deadline is what notices.
+    monkeypatch.chdir(tmp_path)
+    store = InMemoryEventStore()
+    system = _deadline_system(monkeypatch, tmp_path, store, on_deadline=OnDeadline.FAIL)
+    turn = "turn-complete"
+
+    _reserve_three(system, turn)
+    for source, text in (("searcher-1", "a"), ("searcher-2", "b")):
+        system._handle_completion_event(_arrival(source, text, turn))
+    # The third arrival reaches the ledger and never reaches the handler.
+    system.join.record_completion(
+        turn, "summarizer-1", Completion("searcher-3", "searcher-3", "c")
+    )
+
+    _tick(system, turn)
+
+    assert any("summarizer: summarizing 3 event(s)" in step for step in system.steps)
+    (recorded,) = system.timed_out_joins
+    assert recorded.missing == (), "nothing was missing, so there was nothing to fail on"
+    assert recorded.outcome is OnDeadline.SUMMARIZE
+
+
+def test_a_deadline_does_not_move_when_a_fan_in_reserves_again(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    # Three sources reserve one fan-in, and a deadline that moved with each
+    # would be pushed out by the very dispatcher slowness it bounds.
+    monkeypatch.chdir(tmp_path)
+    store = InMemoryEventStore()
+    system = _deadline_system(monkeypatch, tmp_path, store, on_deadline=OnDeadline.SUMMARIZE)
+    turn = "turn-once"
+
+    _reserve_three(system, turn)
+    first = system.join.get_deadline(turn, "summarizer-1")
+    _reserve_three(system, turn)
+
+    assert system.join.get_deadline(turn, "summarizer-1") == first
+
+
+class _TakenOverSummarizer:
+    """A summarizer that loses its claim to somebody else while it is running.
+
+    The takeover is done from inside `summarize`, so there is no thread and no
+    sleep in the test: the interleaving that matters is forced rather than
+    waited for.
+    """
+
+    rival: object = None
+    clock: object = None
+
+    def __init__(self, model_id: str, **_: object) -> None:
+        self.model_id = model_id
+
+    def summarize(self, text: str) -> str:
+        _TakenOverSummarizer.clock.after(600.0)
+        _TakenOverSummarizer.rival.claim_summary("turn-lost", "summarizer-1")
+        return f"summary:{text}"
+
+    def close(self) -> None:
+        return None
+
+
+def test_a_summarizer_that_lost_its_claim_throws_its_answer_away(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """The check that holds whether or not anything is renewing.
+
+    A worker slower than the lease is taken over, and by the time it returns the
+    join is somebody else's. Writing its answer beside the replacement's is two
+    results nobody can tell apart afterwards, which is the one outcome none of
+    this is worth — so the work is spent and the writing down is dropped.
+    """
+    monkeypatch.chdir(tmp_path)
+    clock = _MovableClock()
+    store = InMemoryEventStore()
+    rival = StreamJoinLedger(
+        store, "graph:lost", holder="worker-b", lease_seconds=300.0, clock=clock
+    )
+    _TakenOverSummarizer.rival = rival
+    _TakenOverSummarizer.clock = clock
+
+    graph = _three_search_graph(str(tmp_path / "lost.md"))
+    monkeypatch.setattr("agentic_graph.compiler.TavilySearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.ValyuSearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.LLMCall", _StubLLMCall)
+    monkeypatch.setattr("agentic_graph.compiler.SearchAgent", _StubSearchAgent)
+    monkeypatch.setattr("agentic_graph.compiler.SummarizationAgent", _TakenOverSummarizer)
+    for name in ("TAVILY_API_KEY", "VALYU_API_KEY", "NOTES_TAVILY_API_KEY"):
+        monkeypatch.setenv(name, "env")
+    system = build_compiled_graph_system(
+        graph,
+        join=StreamJoinLedger(
+            store, "graph:lost", holder="worker-a", lease_seconds=300.0, clock=clock
+        ),
+    )
+
+    turn = "turn-lost"
+    for node_id in ("searcher-1", "searcher-2"):
+        system._record_expected_completions(system.compiled.agents[node_id], turn)
+    system._handle_completion_event(_arrival("searcher-1", "a", turn))
+    assert system._handle_completion_event(_arrival("searcher-2", "b", turn)) is None, (
+        "the answer was not written"
+    )
+
+    assert turn not in system.final_responses
+    (discarded,) = system.discarded_answers
+    assert discarded.taken_over_by == "worker-b"
+    assert any("discarded its answer" in step for step in system.steps)
+
+
+class _SlowSummarizer:
+    """A summarizer that takes long enough for a heartbeat to beat."""
+
+    def __init__(self, model_id: str, **_: object) -> None:
+        self.model_id = model_id
+
+    def summarize(self, text: str) -> str:
+        time.sleep(0.2)
+        return f"summary:{text}"
+
+    def close(self) -> None:
+        return None
+
+
+def test_a_running_summarizer_keeps_its_claim_alive_when_asked_to(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    # The other dial: renewing is opt-in, because it costs a thread and an
+    # append per beat and being taken over is sometimes acceptable.
+    monkeypatch.chdir(tmp_path)
+    store = InMemoryEventStore()
+    ledger = StreamJoinLedger(store, "graph:renewing", holder="worker-a", lease_seconds=300.0)
+
+    graph = _three_search_graph(str(tmp_path / "renewing.md"))
+    monkeypatch.setattr("agentic_graph.compiler.TavilySearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.ValyuSearchProvider", _StubProvider)
+    monkeypatch.setattr("agentic_graph.compiler.LLMCall", _StubLLMCall)
+    monkeypatch.setattr("agentic_graph.compiler.SearchAgent", _StubSearchAgent)
+    monkeypatch.setattr("agentic_graph.compiler.SummarizationAgent", _SlowSummarizer)
+    for name in ("TAVILY_API_KEY", "VALYU_API_KEY", "NOTES_TAVILY_API_KEY"):
+        monkeypatch.setenv(name, "env")
+    system = build_compiled_graph_system(graph, join=ledger, renew_claim_every=0.02)
+
+    turn = "turn-renewing"
+    system._record_expected_completions(system.compiled.agents["searcher-1"], turn)
+    before = time.time()
+    assert system._handle_completion_event(_arrival("searcher-1", "a", turn)) is not None
+
+    # The claim was refreshed while the summarizer ran, so its instant is later
+    # than the moment it was taken.
+    held = ledger.get_claim(turn, "summarizer-1").held
+    assert held is not None
+    assert held.claimed_at > before, "nothing renewed"
+    assert system.discarded_answers == []

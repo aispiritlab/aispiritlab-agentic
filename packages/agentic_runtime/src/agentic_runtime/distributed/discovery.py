@@ -4,8 +4,8 @@ from collections.abc import Callable, Sequence
 
 from agentic.workflow import SQLiteEventStore, SQLiteProcessorLock
 from agentic_runtime.distributed.client import DistributedChatClient
-from agentic_runtime.distributed.registry import AgentSnapshot, RedisServiceRegistry
-from agentic_runtime.distributed.transport import RedisStreamsTransport
+from agentic_runtime.distributed.registry import AgentSnapshot, LaserServiceRegistry
+from agentic_runtime.distributed.transport import LaserTransport
 from agentic_runtime.messaging.messages import Message
 
 type ServiceHandler = Callable[[Message, "AgenticServiceDiscovery"], Sequence[Message]]
@@ -16,13 +16,13 @@ class AgenticServiceDiscovery:
     """Facade for distributed agent infrastructure.
 
     Workshop participants use this as the single entry point — never touching
-    ``RedisStreamsTransport`` or ``RedisServiceRegistry`` directly.
+    ``LaserTransport`` or ``LaserServiceRegistry`` directly.
     """
 
     def __init__(
         self,
-        transport: RedisStreamsTransport,
-        registry: RedisServiceRegistry,
+        transport: LaserTransport,
+        registry: LaserServiceRegistry,
         *,
         liveness_ttl_seconds: float = 15.0,
     ) -> None:
@@ -34,12 +34,14 @@ class AgenticServiceDiscovery:
     def from_settings(cls) -> AgenticServiceDiscovery:
         from agentic_runtime.settings import settings
 
-        transport = RedisStreamsTransport(
-            settings.redis_url,
-            prefix=settings.redis_stream_prefix,
-            stream_maxlen=settings.redis_stream_maxlen,
+        transport = LaserTransport(
+            settings.laser_connection_string,
+            prefix=settings.laser_stream_prefix,
+            partitions=settings.laser_partitions,
+            message_expiry=settings.laser_message_expiry,
+            health_expiry=settings.laser_health_expiry,
         )
-        registry = RedisServiceRegistry(transport)
+        registry = LaserServiceRegistry(transport)
         return cls(
             transport,
             registry,
@@ -94,7 +96,9 @@ class AgenticServiceDiscovery:
             raise RuntimeError(
                 "EVENT_STORE_PATH is required when DISTRIBUTED_REQUIRE_EVENT_STORE=true"
             )
-        event_store = SQLiteEventStore(settings.event_store_path) if settings.event_store_path else None
+        event_store = (
+            SQLiteEventStore(settings.event_store_path) if settings.event_store_path else None
+        )
         return DistributedService(
             agent_name=name,
             capabilities=capabilities,
@@ -104,9 +108,7 @@ class AgenticServiceDiscovery:
             heartbeat_seconds=heartbeat_seconds,
             close_hook=close_hook,
             min_idle_ms=(
-                settings.distributed_retry_min_idle_ms
-                if min_idle_ms is None
-                else min_idle_ms
+                settings.distributed_retry_min_idle_ms if min_idle_ms is None else min_idle_ms
             ),
             event_store=event_store,
             workflow_lock=(
@@ -137,11 +139,11 @@ class AgenticServiceDiscovery:
     # ------------------------------------------------------------------
 
     @property
-    def transport(self) -> RedisStreamsTransport:
+    def transport(self) -> LaserTransport:
         return self._transport
 
     @property
-    def registry(self) -> RedisServiceRegistry:
+    def registry(self) -> LaserServiceRegistry:
         return self._registry
 
     @property
@@ -149,7 +151,7 @@ class AgenticServiceDiscovery:
         return self._liveness_ttl_seconds
 
     def close(self) -> None:
-        """Close the underlying transport (Redis connection)."""
+        """Close the underlying transport (the Iggy connection and its loop)."""
         self._transport.close()
 
 

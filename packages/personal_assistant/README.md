@@ -64,7 +64,7 @@ Inherits from `agentic_runtime.Settings`:
 |----------|---------|-------------|
 | `API_BASE_URL` | `http://localhost:1234` | LLM server endpoint |
 | `AGENTIC_MODEL` | — | Model name for inference |
-| `AGENTIC_TRANSPORT` | `local` | `local` or `redis_streams` |
+| `AGENTIC_TRANSPORT` | `local` | `local` or `laser` |
 
 ## Testing
 

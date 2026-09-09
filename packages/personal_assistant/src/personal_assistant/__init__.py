@@ -81,7 +81,7 @@ def get_runtime(user: str | None = None, workspace: str | None = None) -> PARunt
         if cache_key not in _runtimes:
             from personal_assistant.settings import settings
 
-            if settings.agentic_transport == "redis_streams":
+            if settings.agentic_transport == "laser":
                 from agentic_runtime.distributed.runtime import DistributedAgenticRuntime
 
                 runtime = DistributedAgenticRuntime.from_settings()

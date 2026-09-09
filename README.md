@@ -79,7 +79,7 @@ cli                --> personal_assistant
 
 **agentic** -- Core agent SDK. Provides `Agent`, `CoreAgentic`, model providers, prompt builders, toolsets, and workflow primitives. This is the low-level foundation.
 
-**agentic_runtime** -- Generic orchestration framework. `AgenticRuntime` accepts workflows, a router, and output handlers as constructor parameters. Also provides messaging infrastructure, distributed runtime (Redis Streams), storage, tracing, and turn execution. No application-specific code.
+**agentic_runtime** -- Generic orchestration framework. `AgenticRuntime` accepts workflows, a router, and output handlers as constructor parameters. Also provides messaging infrastructure, distributed runtime (Apache Iggy, via the Laser SDK), storage, tracing, and turn execution. No application-specific code.
 
 **agentic_graph** -- Visual agent composition package. Provides a PixiJS-backed graph canvas in Gradio, graph validation, summary/code generation, and a standalone `agentic-graph` app for prototyping workflows.
 
@@ -150,7 +150,8 @@ Settings are loaded from environment variables or `.env` file. Key settings:
 | `ORCHESTRATION_MODEL_NAME` | `Qwen/Qwen3.5-2B` | Router model |
 | `THINKINK_MODEL` | `Qwen/Qwen3.5-9B` | Thinking model (Sage) |
 | `API_BASE_URL` | `http://localhost:1234` | LLM API endpoint |
-| `AGENTIC_TRANSPORT` | `in_memory` | `in_memory` or `redis_streams` |
+| `AGENTIC_TRANSPORT` | `in_memory` | `in_memory` or `laser` |
+| `LASER_CONNECTION_STRING` | `iggy:iggy@127.0.0.1:8090` | Apache Iggy broker, for `laser` |
 | `CHAT_SERVER_PORT` | `7860` | Gradio server port |
 
 

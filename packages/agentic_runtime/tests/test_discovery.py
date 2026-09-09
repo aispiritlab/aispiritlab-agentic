@@ -7,7 +7,7 @@ from agentic_runtime.distributed.registry import AgentSnapshot
 
 
 class _FakeRegistry:
-    """Registry that returns canned snapshots without needing Redis."""
+    """Registry that returns canned snapshots without needing a broker."""
 
     def __init__(self, agents: list[AgentSnapshot] | None = None) -> None:
         self._agents = agents or []

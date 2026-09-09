@@ -14,9 +14,29 @@ dependencies = [
     "evaluation",
     "httpx>=0.28.1",
     "providers",
-    "redis>=6.2.0",
+    # The distributed transport's broker. Imported at the top of
+    # `distributed/transport.py`, so it is a dependency rather than an extra:
+    # an optional import that nothing declares is one that fails at collection
+    # for everybody who does not happen to have it.
+    #
+    # Pinned below 0.4 deliberately. The SDK is pre-1.0 and says so — a minor
+    # release may change the wire contract, and two processes on one broker
+    # have to agree about which contract they are speaking.
+    "laser-sdk>=0.3.1,<0.4",
     "structlog>=25.5.0",
 ]
+
+# `create_tracer` tees MLflow with aiwatcher when AIWATCHER_URL is set, and its
+# import is lazy and fail-soft — telemetry must never be the reason the agent
+# will not start. That branch is why this is an extra rather than a dependency:
+# an installation that does not want aiwatcher installs nothing and the tee
+# quietly stays MLflow-only.
+#
+# It is also why the extra has to exist at all. Without it the lazy import can
+# only succeed by accident, so the tee is committed and inert — which is what
+# it was until this line.
+[project.optional-dependencies]
+aiwatcher = ["aiwatcher-sdk"]
 
 [build-system]
 requires = ["uv_build>=0.10.5,<0.11.0"]

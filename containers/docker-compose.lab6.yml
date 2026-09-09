@@ -1,16 +1,30 @@
 services:
-  redis:
-    image: redis:8.6-alpine
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+  iggy:
+    image: apache/iggy:0.9.0-edge.5
+    # Every setting below is load-bearing. Iggy's runtime is io_uring and the
+    # default seccomp profile blocks it; the default "numa:auto" sharding binds
+    # shard memory to a NUMA node and dies inside a container VM; and without
+    # the root credentials the server generates a password, logs it once, and
+    # answers every login with "Invalid credentials".
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      IGGY_TCP_ADDRESS: 0.0.0.0:8090
+      IGGY_SYSTEM_SHARDING_CPU_ALLOCATION: "2"
+      IGGY_SYSTEM_SHARDING_PIN_CORES: "false"
+      IGGY_ROOT_USERNAME: iggy
+      IGGY_ROOT_PASSWORD: iggy
     ports:
-      - "6379:6379"
+      - "8090:8090"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # The image ships no client, and Iggy speaks a binary protocol over TCP —
+      # so the probe is "is the port accepting", which is what the SDK needs.
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/8090' || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 20
     volumes:
-      - redis-data:/data
+      - iggy-data:/local_data
 
   planner-agent:
     platform: linux/amd64
@@ -22,15 +36,15 @@ services:
       - ../.env
     environment:
       AGENT_SERVICE_NAME: planner
-      AGENTIC_TRANSPORT: redis_streams
-      REDIS_URL: redis://redis:6379/0
+      AGENTIC_TRANSPORT: laser
+      LASER_CONNECTION_STRING: iggy:iggy@iggy:8090
       API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
       EVENT_STORE_PATH: /data/workflow.sqlite3
       DISTRIBUTED_REQUIRE_EVENT_STORE: "true"
     volumes:
       - planner-data:/data
     depends_on:
-      redis:
+      iggy:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -45,15 +59,15 @@ services:
       - ../.env
     environment:
       AGENT_SERVICE_NAME: search
-      AGENTIC_TRANSPORT: redis_streams
-      REDIS_URL: redis://redis:6379/0
+      AGENTIC_TRANSPORT: laser
+      LASER_CONNECTION_STRING: iggy:iggy@iggy:8090
       API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
       EVENT_STORE_PATH: /data/workflow.sqlite3
       DISTRIBUTED_REQUIRE_EVENT_STORE: "true"
     volumes:
       - search-data:/data
     depends_on:
-      redis:
+      iggy:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -68,15 +82,15 @@ services:
       - ../.env
     environment:
       AGENT_SERVICE_NAME: summary
-      AGENTIC_TRANSPORT: redis_streams
-      REDIS_URL: redis://redis:6379/0
+      AGENTIC_TRANSPORT: laser
+      LASER_CONNECTION_STRING: iggy:iggy@iggy:8090
       API_BASE_URL: ${DOCKER_API_BASE_URL:-http://host.docker.internal:1234}
       EVENT_STORE_PATH: /data/workflow.sqlite3
       DISTRIBUTED_REQUIRE_EVENT_STORE: "true"
     volumes:
       - summary-data:/data
     depends_on:
-      redis:
+      iggy:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -90,8 +104,8 @@ services:
     env_file:
       - ../.env
     environment:
-      AGENTIC_TRANSPORT: redis_streams
-      REDIS_URL: redis://redis:6379/0
+      AGENTIC_TRANSPORT: laser
+      LASER_CONNECTION_STRING: iggy:iggy@iggy:8090
       CHAT_ENTRY_AGENT: planner
       DISTRIBUTED_CHAT_SOURCE: chat
       CHAT_SERVER_NAME: 0.0.0.0
@@ -100,7 +114,7 @@ services:
     ports:
       - "7860:7860"
     depends_on:
-      redis:
+      iggy:
         condition: service_healthy
       planner-agent:
         condition: service_started
@@ -112,7 +126,7 @@ services:
       - "host.docker.internal:host-gateway"
 
 volumes:
-  redis-data:
+  iggy-data:
   planner-data:
   search-data:
   summary-data:

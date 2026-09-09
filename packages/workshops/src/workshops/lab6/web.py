@@ -2,7 +2,7 @@
 
 This is the entry point the ``chat`` container in
 ``containers/docker-compose.lab6.yml`` runs: a thin Gradio front-end that
-publishes a question to the planner over Redis Streams and waits for the
+publishes a question to the planner over Apache Iggy and waits for the
 summary agent's reply.
 """
 
@@ -26,7 +26,7 @@ from chat import (
 )
 
 GREETING = (
-    "Cześć! To rozproszony tryb Lab 6: **planner → search → summary** przez Redis Streams.\n\n"
+    "Cześć! To rozproszony tryb Lab 6: **planner → search → summary** przez Apache Iggy.\n\n"
     "Wpisz `agents`, aby zobaczyć aktywne usługi, albo zadaj pytanie."
 )
 

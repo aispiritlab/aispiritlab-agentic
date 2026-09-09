@@ -2,22 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Any
 
-from agentic.workflow.messages import Event, Message, RecordedMessageMetadata
+from agentic.workflow.messages import (
+    Event,
+    Message,
+    RecordedMessageMetadata,
+    metadata_with_updates,
+)
 from agentic_runtime.distributed.serialization import register_record_types
-
-
-def _metadata_with_updates(
-    metadata: RecordedMessageMetadata,
-    **updates: Any,
-) -> RecordedMessageMetadata:
-    values = {
-        field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)
-    }
-    values.update(updates)
-    return RecordedMessageMetadata(**values)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True, init=False)
@@ -72,7 +66,7 @@ class GraphDispatchEvent(Event):
     def with_metadata(self, **updates: Any) -> Message:
         return GraphDispatchEvent(
             data=dict(self.data),
-            metadata=_metadata_with_updates(self.metadata, **updates),
+            metadata=metadata_with_updates(self.metadata, **updates),
         )
 
     def with_data(self, **updates: Any) -> Message:
@@ -132,7 +126,7 @@ class GraphCompletionEvent(Event):
     def with_metadata(self, **updates: Any) -> Message:
         return GraphCompletionEvent(
             data=dict(self.data),
-            metadata=_metadata_with_updates(self.metadata, **updates),
+            metadata=metadata_with_updates(self.metadata, **updates),
         )
 
     def with_data(self, **updates: Any) -> Message:
@@ -191,7 +185,7 @@ class GraphOutputReadyEvent(Event):
     def with_metadata(self, **updates: Any) -> Message:
         return GraphOutputReadyEvent(
             data=dict(self.data),
-            metadata=_metadata_with_updates(self.metadata, **updates),
+            metadata=metadata_with_updates(self.metadata, **updates),
         )
 
     def with_data(self, **updates: Any) -> Message:

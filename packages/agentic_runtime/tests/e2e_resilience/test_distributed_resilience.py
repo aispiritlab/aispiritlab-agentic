@@ -4,7 +4,7 @@ Tests a 5-agent pipeline (coordinator -> researcher -> fact_checker -> editor ->
 that hits a real LLM. Agents are randomly crashed and restarted to verify they resume
 from the last unacknowledged message in the stream.
 
-Parameterized to run on both in-memory and Redis transports.
+Parameterized to run on both in-memory and Laser (Apache Iggy) transports.
 
 Usage:
     RUN_DISTRIBUTED_RESILIENCE=1 uv run pytest packages/agentic_runtime/tests/e2e/test_distributed_resilience.py -v
@@ -395,37 +395,34 @@ def llm_available():
         pytest.skip("LLM server not available at localhost:1234")
 
 
-def _redis_available() -> bool:
-    try:
-        from redis import Redis
+def _iggy_available() -> bool:
+    import socket
 
-        client = Redis.from_url("redis://localhost:6379/0")
-        client.ping()
-        client.close()
-        return True
-    except Exception:
+    try:
+        with socket.create_connection(("127.0.0.1", 8090), timeout=1.0):
+            return True
+    except OSError:
         return False
 
 
-@pytest.fixture(params=["in_memory", "redis"])
+@pytest.fixture(params=["in_memory", "laser"])
 def transport_env(request, llm_available):
     """Provide (transport, registry, discovery) for each transport backend."""
-    if request.param == "redis":
-        if not _redis_available():
-            pytest.skip("Redis not available at localhost:6379")
+    if request.param == "laser":
+        if not _iggy_available():
+            pytest.skip("Apache Iggy not available at localhost:8090 — run `make iggy`")
 
-        from agentic_runtime.distributed.registry import RedisServiceRegistry
-        from agentic_runtime.distributed.transport import RedisStreamsTransport
+        from agentic_runtime.distributed.registry import LaserServiceRegistry
+        from agentic_runtime.distributed.transport import LaserTransport
 
-        prefix = f"resilience_{uuid.uuid4().hex[:8]}"
-        transport = RedisStreamsTransport("redis://localhost:6379/0", prefix=prefix)
-        registry = RedisServiceRegistry(transport)
+        # A stream per run, which is what isolates one run from the next. There
+        # is nothing to delete afterwards: the streams stay in a scratch broker
+        # rather than keys in a database somebody else is also using.
+        prefix = f"resilience{uuid.uuid4().hex[:8]}"
+        transport = LaserTransport("iggy:iggy@127.0.0.1:8090", prefix=prefix)
+        registry = LaserServiceRegistry(transport)
         discovery = AgenticServiceDiscovery(transport, registry, liveness_ttl_seconds=30.0)
         yield discovery
-        # Cleanup Redis keys
-        client = transport.client
-        for key in client.keys(f"{prefix}:*"):
-            client.delete(key)
         transport.close()
     else:
         transport = InMemoryTransport(prefix="resilience")

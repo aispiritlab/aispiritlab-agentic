@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Any
 
-from agentic.workflow.messages import Event, Message, RecordedMessageMetadata
-
-
-def _metadata_with_updates(
-    metadata: RecordedMessageMetadata, **updates: Any
-) -> RecordedMessageMetadata:
-    values = {
-        field.name: getattr(metadata, field.name) for field in fields(RecordedMessageMetadata)
-    }
-    values.update(updates)
-    return RecordedMessageMetadata(**values)
+from agentic.workflow.messages import (
+    Event,
+    Message,
+    RecordedMessageMetadata,
+    metadata_with_updates,
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True, init=False)
@@ -49,7 +44,7 @@ class TaskDelegated(Event):
 
     def with_metadata(self, **updates: Any) -> Message:
         return TaskDelegated(
-            data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates)
+            data=dict(self.data), metadata=metadata_with_updates(self.metadata, **updates)
         )
 
     def with_data(self, **updates: Any) -> Message:
@@ -95,7 +90,7 @@ class TaskCompleted(Event):
 
     def with_metadata(self, **updates: Any) -> Message:
         return TaskCompleted(
-            data=dict(self.data), metadata=_metadata_with_updates(self.metadata, **updates)
+            data=dict(self.data), metadata=metadata_with_updates(self.metadata, **updates)
         )
 
     def with_data(self, **updates: Any) -> Message:

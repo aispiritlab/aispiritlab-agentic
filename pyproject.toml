@@ -60,6 +60,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
+    # Named rather than left to `pytest-asyncio` to drag in. A test group that
+    # does not name its own runner is one where `uv run pytest` finds nothing
+    # and the reason is three levels down somebody else's dependency tree.
+    "pytest>=8",
     "pytest-asyncio>=0.24",
     "respx>=0.22",
     "ruff>=0.15.9",
@@ -123,7 +127,7 @@ force-sort-within-sections = true
 markers = [
     "workflow_smoke: live-model workflow smoke tests that validate a single workflow or callback.",
     "agent_e2e_live: runtime-first live end-to-end tests for the full agentic system.",
-    "distributed_resilience: end-to-end resilience tests requiring LLM server (Redis optional).",
+    "distributed_resilience: end-to-end resilience tests requiring LLM server (Iggy optional).",
 ]
 
 [tool.uv.workspace]
@@ -157,3 +161,12 @@ personal_assistant = { workspace = true }
 agentic_graph = { workspace = true }
 providers = { workspace = true }
 workshops = { workspace = true }
+# Pinned to a revision, as planner pins it, for the reason a floating branch
+# would defeat: the SDK is what an agent's traces are shaped by, and "whatever
+# was on main that morning" is not something a trace can be read against later.
+#
+# The same revision planner is on. Two repositories reading one SDK should read
+# one version of it — and the rev has to be *pushed*, which is the mistake this
+# line was written with the first time: a local commit resolves for whoever made
+# it and for nobody else.
+aiwatcher-sdk = { git = "https://github.com/aispiritlabs/aispiritlabs-aiwatcher.git", rev = "770eb970f7f3353b144fcfa09bf0475198514c69", subdirectory = "sdk/python" }

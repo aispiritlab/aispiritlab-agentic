@@ -469,7 +469,7 @@ def _on_delete_user(
 
 def create_chat_ui() -> gr.Blocks:
     """Create the Personal Assistant chat UI."""
-    distributed_mode = settings.agentic_transport == "redis_streams"
+    distributed_mode = settings.agentic_transport == "laser"
     mode_choices = ["Agenci"] if distributed_mode else ["Agenci", "Chat", "Generate image"]
     default_user = _get_default_user_name()
     default_slug = default_user_slug()

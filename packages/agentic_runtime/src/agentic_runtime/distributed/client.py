@@ -12,13 +12,13 @@ from agentic_runtime.messaging.messages import (
     UserMessage,
 )
 
-from .transport import RedisStreamsTransport
+from .transport import LaserTransport
 
 
 class DistributedChatClient:
     def __init__(
         self,
-        transport: RedisStreamsTransport,
+        transport: LaserTransport,
         *,
         entry_agent: str = "planner",
         source: str = "chat",

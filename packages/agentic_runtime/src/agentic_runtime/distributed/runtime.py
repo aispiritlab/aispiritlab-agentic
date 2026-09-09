@@ -8,7 +8,7 @@ from agentic_runtime.messaging.messages import Message, UserMessage
 
 
 class DistributedAgenticRuntime:
-    """Runtime backed by Redis Streams — satisfies ``RuntimeProtocol``.
+    """Runtime backed by Apache Iggy — satisfies ``RuntimeProtocol``.
 
     The chat layer and ``get_runtime()`` can return this transparently;
     callers never know whether the runtime is local or distributed.
@@ -69,7 +69,7 @@ class DistributedAgenticRuntime:
     def start(self) -> str:
         return (
             "Cześć! To rozproszony tryb: planner -> search -> summary. "
-            "Zadaj pytanie, a odpowiedź wróci przez Redis Streams."
+            "Zadaj pytanie, a odpowiedź wróci przez Apache Iggy."
         )
 
     def stop(self) -> None:

@@ -42,9 +42,18 @@ class Settings(BaseSettings):
     # not a loopback address — see chat.launch().
     chat_auth: str = ""
     agentic_transport: str = "in_memory"
-    redis_url: str = "redis://localhost:6379/0"
-    redis_stream_prefix: str = "agentic"
-    redis_stream_maxlen: int | None = 100_000
+    # `user:password@host:port`; the Laser SDK supplies Iggy's TCP scheme.
+    laser_connection_string: str = "iggy:iggy@127.0.0.1:8090"
+    # One Iggy stream per deployment. Every topic below is inside it.
+    laser_stream_prefix: str = "agentic"
+    # Kept at 1 on purpose: a target's messages are one ordered sequence, and
+    # the chat client tails partition 0. See distributed/transport.py.
+    laser_partitions: int = 1
+    # Iggy trims by time, not by entry count. "server_default" keeps whatever
+    # the broker is configured for; "none" keeps everything.
+    laser_message_expiry: str = "server_default"
+    # The health topic only, and it must stay well above the liveness TTL.
+    laser_health_expiry: str = "10m"
     distributed_require_event_store: bool = False
     distributed_max_delivery_attempts: int = 3
     distributed_retry_min_idle_ms: int = 5_000
